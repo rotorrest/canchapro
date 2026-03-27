@@ -369,7 +369,7 @@ export const BILLING_PERIODS: BillingPeriod[] = [
 
 // ── Add-ons Catalog ─────────────────────────────────────────────────────────
 
-export type AddOnPriceType = "flat_monthly" | "per_unit" | "percentage";
+export type AddOnPriceType = "flat_monthly" | "per_unit" | "percentage" | "included";
 export type AddOnStatus = "active" | "beta" | "deprecated";
 export type AddOnTier = "roi" | "ops" | "engagement" | "soon";
 

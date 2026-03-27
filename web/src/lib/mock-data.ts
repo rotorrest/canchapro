@@ -87,17 +87,6 @@ export interface AvailabilityConfig {
   bookingDeadlineTime: string | null;
 }
 
-export type SlotStatus = "available" | "occupied" | "blocked" | "past" | "too_soon" | "limit_reached" | "deadline" | "too_far" | "buffer";
-
-export interface AvailabilitySlot {
-  startTime: string;
-  endTime: string;
-  status: SlotStatus;
-  price: number;
-  durationMinutes: number;
-  reason?: string;
-}
-
 export interface SpecialDay {
   id: string;
   tenantId: string;
@@ -303,11 +292,6 @@ export const SEDES: Sede[] = [
   { id: "s2", tenantId: "t2", name: "Lima Norte", address: "Av. Universitaria 456, Los Olivos", city: "Lima" },
   { id: "s3", tenantId: "t2", name: "Lima Sur", address: "Av. Primavera 789, Surco", city: "Lima" },
 ];
-
-/** Get sedes for a tenant */
-export function getSedesForTenant(tenantId: string): Sede[] {
-  return SEDES.filter((s) => s.tenantId === tenantId);
-}
 
 // ── User Directory (multi-tenant) ────────────────────────────────────────────
 
@@ -733,26 +717,6 @@ export const TENANT_ADD_ONS: TenantAddOn[] = [
   // Trujillo Padel Club (t4) — pro plan, WhatsApp included in plan
 ];
 
-export function getAddOnById(id: string): AddOn | undefined {
-  return ADD_ONS_CATALOG.find((a) => a.id === id);
-}
-
-export function getActiveAddOnsForTenant(tenantId: string): (TenantAddOn & { addOn: AddOn })[] {
-  return TENANT_ADD_ONS
-    .filter((ta) => ta.tenantId === tenantId && !ta.cancelledAt)
-    .map((ta) => ({
-      ...ta,
-      addOn: ADD_ONS_CATALOG.find((a) => a.id === ta.addOnId)!,
-    }))
-    .filter((ta) => ta.addOn);
-}
-
-export function getMonthlyAddOnCost(tenantId: string): number {
-  return getActiveAddOnsForTenant(tenantId)
-    .filter((ta) => ta.addOn.priceType === "flat_monthly")
-    .reduce((sum, ta) => sum + ta.addOn.price, 0);
-}
-
 // ── Club Users (staff & admins) ───────────────────────────────────────────────
 
 export interface ClubUser {
@@ -908,15 +872,6 @@ export function getCurrentVersion(court: Court): CourtVersion {
   return court.versions[court.versions.length - 1];
 }
 
-/** Find a court version by its ID across all courts */
-export function getCourtVersionById(versionId: string): CourtVersion | undefined {
-  for (const court of COURTS) {
-    const v = court.versions.find((ver) => ver.id === versionId);
-    if (v) return v;
-  }
-  return undefined;
-}
-
 // ── Court Schedules (operating hours per court per day) ──────────────────────
 
 function defaultSchedule(courtId: string): CourtSchedule[] {
@@ -1006,10 +961,6 @@ export function getAvailabilityConfig(tenantId: string): AvailabilityConfig {
     autoCancelNoShow: false,
     bookingDeadlineTime: null,
   };
-}
-
-export function getSpecialDaysForTenant(tenantId: string): SpecialDay[] {
-  return SPECIAL_DAYS.filter((sd) => sd.tenantId === tenantId);
 }
 
 export function getBlocksForCourt(courtId: string, date: string, tenantId: string, sedeId: string | null): CourtBlock[] {
@@ -1464,19 +1415,6 @@ export const TICKET_MESSAGES: TicketMessage[] = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-export function getSlotLabel(slot: string): string {
-  const labels: Record<string, string> = {
-    morning: "Mañana (6AM–12PM)",
-    afternoon: "Tarde (12PM–6PM)",
-    evening: "Noche (6PM–10PM)",
-  };
-  return labels[slot] ?? slot;
-}
-
-export function getDayTypeLabel(dayType: string): string {
-  return dayType === "weekday" ? "Lun–Vie" : "Sáb–Dom";
-}
 
 export function getCourtTypeLabel(type: string): string {
   const labels: Record<string, string> = {

@@ -14,6 +14,11 @@ import {
   Briefcase,
   ScanLine,
   Wallet,
+  MessageCircle,
+  ListChecks,
+  Link2,
+  Split,
+  Puzzle,
 } from "lucide-react";
 import RotatingHero from "@/components/RotatingHero";
 
@@ -138,6 +143,38 @@ const plans = [
   },
 ];
 
+/* ─── Add-ons ─────────────────────────────────────────────────────────────── */
+const addOns = [
+  {
+    icon: MessageCircle,
+    name: "WhatsApp Recordatorios",
+    desc: "Reduce no-shows con recordatorios automaticos 2 horas antes de cada reserva.",
+    tag: "Incluido en Pro+",
+    tagColor: "bg-green-50 text-green-700",
+  },
+  {
+    icon: ListChecks,
+    name: "Lista de Espera",
+    desc: "Si alguien cancela, el siguiente en la lista recibe notificacion automatica.",
+    tag: "S/ 29/mes",
+    tagColor: "bg-gray-100 text-gray-600",
+  },
+  {
+    icon: Link2,
+    name: "Link de Pago",
+    desc: "Genera links de cobro por Yape o Plin y envialos por WhatsApp. Creditos se acreditan solos.",
+    tag: "S/ 29/mes",
+    tagColor: "bg-gray-100 text-gray-600",
+  },
+  {
+    icon: Split,
+    name: "Split de Cancha",
+    desc: "Divide el costo de la reserva entre 2 o 4 jugadores automaticamente.",
+    tag: "S/ 29/mes",
+    tagColor: "bg-gray-100 text-gray-600",
+  },
+];
+
 /* ─── How it works ────────────────────────────────────────────────────────── */
 const steps = [
   { num: "01", title: "Configura tu operacion", desc: "Canchas, horarios, precios, usuarios y reglas de reserva en pocos minutos." },
@@ -216,9 +253,6 @@ export default function LandingPage() {
               </span>
             ))}
           </div>
-          <p className="mt-4 text-sm text-gray-400">
-            Usado por clubes y complejos deportivos en Peru, Colombia y Mexico
-          </p>
         </div>
       </section>
 
@@ -323,30 +357,40 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Product mockup ──────────────────────────────────────────────────── */}
-      <section className="py-16 px-5 bg-gray-50">
+      {/* ── Add-ons ────────────────────────────────────────────────────────── */}
+      <section className="py-20 px-5 bg-gray-50">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Asi se ve CanchaPro por dentro</h2>
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">
+              Activa solo lo que necesitas
+            </h2>
+            <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
+              Modulos adicionales que puedes activar desde tu panel cuando los necesites. Sin contratos, sin permanencia.
+            </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: "Agenda de canchas", items: ["Cancha voley 1 — 09:00 Reservada", "Cancha futbol 5 — 10:00 Libre", "Cancha tenis 2 — 11:00 Reservada", "Cancha basquet A — 12:00 Libre"] },
-              { label: "Cobros y creditos", items: ["Paquete 20 sesiones — S/ 180", "Creditos Pedro: 12/20", "Venta Yape — +10 cr", "Reserva individual — S/ 25"] },
-              { label: "Dashboard", items: ["Ocupacion: 73%", "Reservas hoy: 24", "Ingresos marzo: S/ 12,400", "Cancelaciones: 4%"] },
-              { label: "Multi-sede", items: ["Sede Norte — 4 canchas", "Sede Sur — 3 canchas", "Sede Centro — 6 canchas", "Total: 13 canchas activas"] },
-            ].map((mock) => (
-              <div key={mock.label} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="bg-gray-900 px-3 py-2">
-                  <p className="text-xs font-medium text-gray-300">{mock.label}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {addOns.map((addon) => (
+              <div key={addon.name} className="bg-white rounded-2xl border border-gray-100 p-6 flex gap-4 hover:shadow-md hover:border-brand-200 transition-all">
+                <div className="w-11 h-11 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
+                  <addon.icon className="w-5 h-5 text-brand-700" />
                 </div>
-                <div className="p-3 space-y-1.5">
-                  {mock.items.map((item) => (
-                    <div key={item} className="text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">{item}</div>
-                  ))}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-semibold text-gray-900">{addon.name}</h3>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${addon.tagColor}`}>
+                      {addon.tag}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1 leading-relaxed">{addon.desc}</p>
                 </div>
               </div>
             ))}
+          </div>
+          <div className="mt-8 text-center">
+            <div className="inline-flex items-center gap-2 text-sm text-gray-500">
+              <Puzzle className="w-4 h-4" />
+              <span>Y mas modulos disponibles: pagos in-app, clases y coaches, RFID, torneos, ranking y fidelizacion.</span>
+            </div>
           </div>
         </div>
       </section>
@@ -428,30 +472,6 @@ export default function LandingPage() {
                 </div>
               </details>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Social proof ────────────────────────────────────────────────────── */}
-      <section className="py-16 px-5">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <div>
-              <p className="text-3xl font-bold text-gray-900">50+</p>
-              <p className="text-sm text-gray-500 mt-1">Canchas gestionadas</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-gray-900">12,000+</p>
-              <p className="text-sm text-gray-500 mt-1">Reservas procesadas</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-gray-900">8</p>
-              <p className="text-sm text-gray-500 mt-1">Sedes activas</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-gray-900">3</p>
-              <p className="text-sm text-gray-500 mt-1">Paises</p>
-            </div>
           </div>
         </div>
       </section>

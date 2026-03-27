@@ -1,41 +1,79 @@
-# ── DNS Records ───────────────────────────────────────────────────────────────
+# ==============================================================================
+# DNS Records
+# ==============================================================================
+#
+# All records are proxied through Cloudflare (orange-cloud) so that Workers
+# routes and SSL termination work correctly.
+#
+# These are only created when cloudflare_zone_id is provided.
+# ==============================================================================
 
-# API subdomain
+locals {
+  manage_dns = var.cloudflare_zone_id != ""
+}
+
+# ── api.canchapro.com ── points to the API worker
 resource "cloudflare_record" "api" {
-  count   = var.cloudflare_zone_id != "" ? 1 : 0
+  count   = local.manage_dns ? 1 : 0
   zone_id = var.cloudflare_zone_id
   name    = "api"
-  content = "canchapro-api.workers.dev"
-  type    = "CNAME"
+  content = "100::" # Proxied dummy AAAA -- Cloudflare intercepts via Worker Route
+  type    = "AAAA"
   proxied = true
+  comment = "API Worker endpoint"
 }
 
-# Admin panel
-resource "cloudflare_record" "admin" {
-  count   = var.cloudflare_zone_id != "" ? 1 : 0
-  zone_id = var.cloudflare_zone_id
-  name    = "admin"
-  content = "canchapro-admin.pages.dev"
-  type    = "CNAME"
-  proxied = true
-}
-
-# App subdomain (direct SPA access)
+# ── app.canchapro.com ── points to the web dashboard (Pages project)
 resource "cloudflare_record" "app" {
-  count   = var.cloudflare_zone_id != "" ? 1 : 0
+  count   = local.manage_dns ? 1 : 0
   zone_id = var.cloudflare_zone_id
   name    = "app"
-  content = "canchapro-web.pages.dev"
+  content = cloudflare_pages_project.web.subdomain
   type    = "CNAME"
   proxied = true
+  comment = "Web dashboard (Pages)"
 }
 
-# Wildcard for tenant subdomains → Router Worker
-resource "cloudflare_record" "wildcard" {
-  count   = var.cloudflare_zone_id != "" ? 1 : 0
+# ── admin.canchapro.com ── points to the admin panel (Pages project)
+resource "cloudflare_record" "admin" {
+  count   = local.manage_dns ? 1 : 0
   zone_id = var.cloudflare_zone_id
-  name    = "*"
-  content = "canchapro-router.workers.dev"
+  name    = "admin"
+  content = cloudflare_pages_project.admin.subdomain
   type    = "CNAME"
   proxied = true
+  comment = "Admin panel (Pages)"
+}
+
+# ── *.canchapro.com ── wildcard for tenant subdomains, points to Router Worker
+resource "cloudflare_record" "wildcard" {
+  count   = local.manage_dns ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = "*"
+  content = "100::" # Proxied dummy AAAA -- Cloudflare intercepts via Worker Route
+  type    = "AAAA"
+  proxied = true
+  comment = "Wildcard for tenant subdomains -> Router Worker"
+}
+
+# ── fallback.canchapro.com ── fallback origin for Cloudflare for SaaS
+resource "cloudflare_record" "fallback" {
+  count   = local.manage_dns ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = "fallback"
+  content = "100::" # Proxied dummy AAAA -- Router Worker handles the request
+  type    = "AAAA"
+  proxied = true
+  comment = "Fallback origin for custom hostnames (SaaS)"
+}
+
+# ── Root domain ── landing/marketing site (Pages project)
+resource "cloudflare_record" "root" {
+  count   = local.manage_dns ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = "@"
+  content = cloudflare_pages_project.landing.subdomain
+  type    = "CNAME"
+  proxied = true
+  comment = "Landing site (Pages)"
 }

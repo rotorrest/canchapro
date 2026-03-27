@@ -5,22 +5,25 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-JWT_SECRET = "change-me-in-production"
+
+# Secrets (set via `wrangler secret put JWT_SECRET`)
+# JWT_SECRET = "..."
 
 # D1 Database
 [[d1_databases]]
 binding = "DB"
 database_name = "canchapro-db"
-database_id = "" # Set after terraform apply
+database_id = "" # Set after `wrangler d1 create canchapro-db`
+migrations_dir = "migrations"
 
 # KV Namespaces
 [[kv_namespaces]]
 binding = "TENANT_KV"
-id = "" # Set after terraform apply
+id = "" # Set after terraform apply or `wrangler kv namespace create TENANT_KV`
 
 [[kv_namespaces]]
 binding = "CACHE_KV"
-id = "" # Set after terraform apply
+id = "" # Set after terraform apply or `wrangler kv namespace create CACHE_KV`
 
 # R2 Bucket
 [[r2_buckets]]
@@ -32,8 +35,27 @@ bucket_name = "canchapro-uploads"
 binding = "NOTIFICATIONS_QUEUE"
 queue = "canchapro-notifications"
 
+# Queues (consumer)
+[[queues.consumers]]
+queue = "canchapro-notifications"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "canchapro-notifications-dlq"
+
+# Cron Triggers
+[triggers]
+crons = [
+  "0 * * * *",    # Every hour: booking reminders
+  "0 0 1 * *",    # 1st of month midnight: monthly credit reset
+]
+
 # Routes
 [env.production]
 routes = [
   { pattern = "api.canchapro.com/*", zone_name = "canchapro.com" }
 ]
+
+# Dev environment
+[env.dev]
+vars = { ENVIRONMENT = "development" }

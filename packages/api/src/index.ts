@@ -10,6 +10,9 @@ import members from "./routes/members";
 import site from "./routes/site";
 import platform from "./routes/platform";
 import marketplace from "./routes/marketplace";
+import sedes from "./routes/sedes";
+import notificationConsumer from "./queue/notifications";
+import scheduledHandler from "./cron/scheduled";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -33,6 +36,7 @@ app.route("/v1/members", members);
 app.route("/v1/site", site);
 app.route("/v1/platform", platform);
 app.route("/v1/marketplace", marketplace);
+app.route("/v1/sedes", sedes);
 
 // 404
 app.notFound((c) => c.json({ error: "Not found" }, 404));
@@ -43,4 +47,9 @@ app.onError((err, c) => {
   return c.json({ error: "Internal server error" }, 500);
 });
 
-export default app;
+// Export with queue consumer and cron trigger
+export default {
+  fetch: app.fetch,
+  queue: notificationConsumer.queue,
+  scheduled: scheduledHandler.scheduled,
+};

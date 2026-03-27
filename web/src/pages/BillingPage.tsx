@@ -38,7 +38,7 @@ export default function BillingPage() {
     return all.filter((p) => p.tenantId === tenantId);
   }, [isPlatform, tenantId, billingData]);
 
-  const currentMonth = "2026-03";
+  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
   const currentPeriod = periods.find((p) => p.month === currentMonth && (isPlatform || p.tenantId === tenantId));
 
   const activeAddOns = useMemo(() => {

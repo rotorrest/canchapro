@@ -78,7 +78,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setCodeError("");
     if (code !== MOCK_CODE) {
-      setCodeError("Codigo incorrecto. Intenta con 123456.");
+      setCodeError("Codigo incorrecto. Revisa tu correo e intenta de nuevo.");
       return;
     }
     setStep("password");

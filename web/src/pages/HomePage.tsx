@@ -4,8 +4,10 @@ import { useTenantData } from "@/hooks/useTenantData";
 import {
   ArrowRight,
   CalendarDays,
+  Clock,
   CreditCard,
   LayoutDashboard,
+  LayoutGrid,
   Users,
   Wallet,
 } from "lucide-react";
@@ -22,17 +24,21 @@ export default function HomePage() {
 
   const adminModules = [
     { to: "/dashboard", label: "Dashboard", desc: "Metricas y reportes del club", icon: LayoutDashboard },
+    { to: "/agenda", label: "Agenda", desc: "Vista calendario de reservas", icon: LayoutGrid },
     { to: "/courts", label: "Canchas", desc: `${td.courts.filter((c) => c.isActive).length} canchas activas`, icon: PadelIcon },
+    { to: "/schedules", label: "Horarios", desc: "Configurar horarios de operacion", icon: Clock },
     { to: "/members", label: "Miembros", desc: `${td.members.filter((m) => m.user.status === "active").length} miembros activos`, icon: Users },
     { to: "/bookings", label: "Reservas", desc: `${td.bookings.filter((b) => b.status === "confirmed").length} confirmadas`, icon: CalendarDays },
     { to: "/credits", label: "Creditos", desc: "Venta de creditos y precios", icon: CreditCard },
   ];
 
   const staffModules = [
+    { to: "/agenda", label: "Agenda", desc: "Vista calendario de reservas", icon: LayoutGrid },
     { to: "/credits", label: "Vender creditos", desc: "Registrar venta a un socio", icon: CreditCard },
     { to: "/members", label: "Miembros", desc: "Agregar o gestionar socios", icon: Users },
     { to: "/bookings", label: "Reservas", desc: "Ver todas las reservas", icon: CalendarDays },
     { to: "/courts", label: "Canchas", desc: "Horarios y bloqueos", icon: PadelIcon },
+    { to: "/schedules", label: "Horarios", desc: "Configurar horarios de operacion", icon: Clock },
   ];
 
   const memberModules = [

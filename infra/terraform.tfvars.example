@@ -1,5 +1,15 @@
+# ==============================================================================
+# Terraform Variables -- copy to terraform.tfvars and fill in real values
+# ==============================================================================
+
 cloudflare_api_token  = "your-api-token-here"
 cloudflare_account_id = "your-account-id-here"
-cloudflare_zone_id    = "" # Set after adding domain to Cloudflare
+cloudflare_zone_id    = ""  # Set after adding domain to Cloudflare; leave empty to skip DNS/routes
 domain                = "canchapro.com"
 environment           = "production"
+
+# Worker script paths (relative to infra/ directory)
+# Build workers first: cd packages/<name> && npm run build
+api_worker_script_path       = "../packages/api/dist/index.js"
+router_worker_script_path    = "../packages/router/dist/index.js"
+club_site_worker_script_path = "../packages/club-site/dist/index.js"

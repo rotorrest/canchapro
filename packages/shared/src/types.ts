@@ -46,12 +46,25 @@ export interface TenantBranding {
   photos: string[];
 }
 
+// ── Sedes ───────────────────────────────────────────────────────────────────
+
+export interface Sede {
+  id: string;
+  tenantId: string;
+  name: string;
+  address: string;
+  city: string;
+  createdAt: string;
+}
+
 // ── Courts ───────────────────────────────────────────────────────────────────
 
 export interface Court {
   id: string;
   tenantId: string;
+  sedeId: string | null;
   name: string;
+  sport: "padel" | "tenis" | "futbol" | "squash" | "pickleball" | "frontenis" | "otro";
   type: "indoor" | "outdoor" | "covered";
   surface: string;
   capacity: number;
@@ -167,7 +180,7 @@ export interface AddOn {
   description: string;
   icon: string;
   tier: "a" | "b" | "c" | "d";
-  priceType: "flat_monthly" | "per_unit" | "percentage";
+  priceType: "flat_monthly" | "per_unit" | "percentage" | "included";
   price: number;
   availableOnPlans: string[]; // ["starter", "pro", "business"]
   status: "active" | "beta" | "deprecated";

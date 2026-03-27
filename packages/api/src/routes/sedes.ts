@@ -47,10 +47,18 @@ sedes.put("/:id", requireRole("super_admin"), async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
 
-  await db
-    .update(schema.sedes)
-    .set(body)
-    .where(and(eq(schema.sedes.id, id), eq(schema.sedes.tenantId, tenantId)));
+  // Whitelist updatable fields to prevent overwriting id/tenantId
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.address !== undefined) updates.address = body.address;
+  if (body.city !== undefined) updates.city = body.city;
+
+  if (Object.keys(updates).length > 0) {
+    await db
+      .update(schema.sedes)
+      .set(updates)
+      .where(and(eq(schema.sedes.id, id), eq(schema.sedes.tenantId, tenantId)));
+  }
 
   const sede = await db.query.sedes.findFirst({ where: eq(schema.sedes.id, id) });
   return c.json({ data: sede });

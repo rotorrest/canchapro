@@ -10,8 +10,9 @@ async function sendBookingReminders(env: Bindings): Promise<void> {
   const now = new Date();
   const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
-  const nowISO = now.toISOString();
-  const twoHoursISO = twoHoursLater.toISOString();
+  // Format as "YYYY-MM-DDTHH:mm:ss" to match the stored startTime format (no Z suffix)
+  const nowISO = now.toISOString().slice(0, 19);
+  const twoHoursISO = twoHoursLater.toISOString().slice(0, 19);
 
   // Find confirmed bookings starting in the next 2 hours
   const upcomingBookings = await db.query.bookings.findMany({

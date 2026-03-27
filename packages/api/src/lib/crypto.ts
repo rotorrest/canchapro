@@ -17,6 +17,11 @@ export async function verifyPassword(password: string, salt: string, storedHash:
   return hash === storedHash;
 }
 
+/** Base64url encode (RFC 7515) */
+function base64url(str: string): string {
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 /** Sign a JWT payload with HMAC-SHA256 */
 export async function signJwt(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -28,13 +33,10 @@ export async function signJwt(payload: Record<string, unknown>, secret: string):
     ["sign"]
   );
 
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const body = btoa(JSON.stringify(payload));
+  const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = base64url(JSON.stringify(payload));
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${header}.${body}`));
-  const sig = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  const sig = base64url(String.fromCharCode(...new Uint8Array(signature)));
 
   return `${header}.${body}.${sig}`;
 }

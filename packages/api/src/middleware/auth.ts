@@ -33,7 +33,9 @@ export const authMiddleware = createMiddleware<{
       return c.json({ error: "Invalid token" }, 401);
     }
 
-    const payload: AuthTokenPayload = JSON.parse(atob(payloadB64));
+    // Decode URL-safe base64 payload
+    const payloadB64Std = payloadB64.replace(/-/g, "+").replace(/_/g, "/");
+    const payload: AuthTokenPayload = JSON.parse(atob(payloadB64Std));
 
     if (payload.exp < Date.now() / 1000) {
       return c.json({ error: "Token expired" }, 401);

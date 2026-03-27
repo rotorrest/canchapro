@@ -3,30 +3,11 @@ import { eq, and, inArray } from "drizzle-orm";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import { hashPassword, generateTempPassword } from "../lib/crypto";
 
 const members = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 members.use("/*", authMiddleware);
-
-// ── Helper: hash password with SHA-256(password + userId) ──────────────────
-
-async function hashPassword(password: string, userId: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest(
-    "SHA-256",
-    encoder.encode(password + userId)
-  );
-  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
-}
-
-// ── Helper: generate random 8-char temp password ───────────────────────────
-
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MEMBER ROUTES
@@ -483,7 +464,7 @@ members.post("/:id/credit-sales", requireRole("super_admin", "staff"), async (c)
 });
 
 // GET /members/:id/transactions — get credit transactions for a member
-members.get("/:id/transactions", async (c) => {
+members.get("/:id/transactions", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const { id } = c.req.param();

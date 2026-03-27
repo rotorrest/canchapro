@@ -12,10 +12,16 @@ const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 auth.post("/login", async (c) => {
   const { email, password } = await c.req.json<{ email: string; password: string }>();
   const db = createDb(c.env.DB);
+  const tenantId = c.get("tenantId");
 
-  const user = await db.query.users.findFirst({
-    where: eq(schema.users.email, email.toLowerCase()),
-  });
+  // Scope by tenant if resolved, otherwise allow platform_admin login without tenant
+  const user = tenantId
+    ? await db.query.users.findFirst({
+        where: and(eq(schema.users.email, email.toLowerCase()), eq(schema.users.tenantId, tenantId)),
+      })
+    : await db.query.users.findFirst({
+        where: eq(schema.users.email, email.toLowerCase()),
+      });
 
   if (!user || user.status !== "active") {
     return c.json({ error: "Credenciales invalidas" }, 401);
@@ -153,9 +159,13 @@ auth.post("/forgot-password", async (c) => {
   // Generate a 6-digit code and store in KV (15 min TTL)
   const code = String(Math.floor(100000 + Math.random() * 900000));
 
-  const user = await db.query.users.findFirst({
-    where: eq(schema.users.email, email.toLowerCase()),
-  });
+  const user = tenantId
+    ? await db.query.users.findFirst({
+        where: and(eq(schema.users.email, email.toLowerCase()), eq(schema.users.tenantId, tenantId)),
+      })
+    : await db.query.users.findFirst({
+        where: eq(schema.users.email, email.toLowerCase()),
+      });
 
   if (user) {
     await c.env.CACHE_KV.put(`reset:${email.toLowerCase()}`, JSON.stringify({ code, userId: user.id }), {

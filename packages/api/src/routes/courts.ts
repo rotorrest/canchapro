@@ -82,10 +82,22 @@ courts.put("/:id", requireRole("super_admin", "staff"), async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
 
-  await db
-    .update(schema.courts)
-    .set(body)
-    .where(and(eq(schema.courts.id, id), eq(schema.courts.tenantId, tenantId)));
+  // Whitelist updatable fields to prevent overwriting id/tenantId
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.sedeId !== undefined) updates.sedeId = body.sedeId;
+  if (body.sport !== undefined) updates.sport = body.sport;
+  if (body.type !== undefined) updates.type = body.type;
+  if (body.surface !== undefined) updates.surface = body.surface;
+  if (body.capacity !== undefined) updates.capacity = body.capacity;
+  if (body.isActive !== undefined) updates.isActive = body.isActive;
+
+  if (Object.keys(updates).length > 0) {
+    await db
+      .update(schema.courts)
+      .set(updates)
+      .where(and(eq(schema.courts.id, id), eq(schema.courts.tenantId, tenantId)));
+  }
 
   const court = await db.query.courts.findFirst({ where: eq(schema.courts.id, id) });
   return c.json({ data: court });
@@ -149,15 +161,23 @@ courts.put("/:id/schedule/:scheduleId", requireRole("super_admin", "staff"), asy
   const { id, scheduleId } = c.req.param();
   const body = await c.req.json();
 
-  await db
-    .update(schema.courtSchedules)
-    .set(body)
-    .where(
-      and(
-        eq(schema.courtSchedules.id, scheduleId),
-        eq(schema.courtSchedules.courtId, id)
-      )
-    );
+  // Whitelist updatable fields to prevent overwriting id/courtId
+  const updates: Record<string, unknown> = {};
+  if (body.openTime !== undefined) updates.openTime = body.openTime;
+  if (body.closeTime !== undefined) updates.closeTime = body.closeTime;
+  if (body.isClosed !== undefined) updates.isClosed = body.isClosed;
+
+  if (Object.keys(updates).length > 0) {
+    await db
+      .update(schema.courtSchedules)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.courtSchedules.id, scheduleId),
+          eq(schema.courtSchedules.courtId, id)
+        )
+      );
+  }
 
   const schedule = await db.query.courtSchedules.findFirst({
     where: eq(schema.courtSchedules.id, scheduleId),
@@ -220,15 +240,24 @@ courts.put("/:id/blocks/:blockId", requireRole("super_admin", "staff"), async (c
   const { id, blockId } = c.req.param();
   const body = await c.req.json();
 
-  await db
-    .update(schema.courtBlocks)
-    .set(body)
-    .where(
-      and(
-        eq(schema.courtBlocks.id, blockId),
-        eq(schema.courtBlocks.courtId, id)
-      )
-    );
+  // Whitelist updatable fields to prevent overwriting id/courtId
+  const updates: Record<string, unknown> = {};
+  if (body.date !== undefined) updates.date = body.date;
+  if (body.startTime !== undefined) updates.startTime = body.startTime;
+  if (body.endTime !== undefined) updates.endTime = body.endTime;
+  if (body.reason !== undefined) updates.reason = body.reason;
+
+  if (Object.keys(updates).length > 0) {
+    await db
+      .update(schema.courtBlocks)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.courtBlocks.id, blockId),
+          eq(schema.courtBlocks.courtId, id)
+        )
+      );
+  }
 
   const block = await db.query.courtBlocks.findFirst({
     where: eq(schema.courtBlocks.id, blockId),

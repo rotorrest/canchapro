@@ -192,7 +192,7 @@ platform.post("/billing/invoices", async (c) => {
 
   // Calculate add-on line items
   const activeAddOns = await db.query.tenantAddOns.findMany({
-    where: and(eq(schema.tenantAddOns.tenantId, tenantId)),
+    where: eq(schema.tenantAddOns.tenantId, tenantId),
   });
   const addOnLineItems: { addOnId: string; name: string; amount: number }[] = [];
   let addOnTotal = 0;

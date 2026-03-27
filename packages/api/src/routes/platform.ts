@@ -190,22 +190,6 @@ platform.post("/billing/invoices", async (c) => {
     where: eq(schema.rateCards.id, rateCardPlan.rateCardId),
   });
 
-  const id = crypto.randomUUID();
-  await db.insert(schema.invoices).values({
-    id,
-    tenantId,
-    period,
-    plan: tenant.plan,
-    basePrice: rateCardPlan.basePrice,
-    bookingsCount,
-    feePerBooking: rateCardPlan.feePerBooking,
-    freeBookings: rateCardPlan.freeBookings,
-    variableTotal,
-    total,
-    rateCardId: rateCardPlan.rateCardId,
-    rateCardName: rateCard?.name ?? "Default",
-  });
-
   // Calculate add-on line items
   const activeAddOns = await db.query.tenantAddOns.findMany({
     where: and(eq(schema.tenantAddOns.tenantId, tenantId)),

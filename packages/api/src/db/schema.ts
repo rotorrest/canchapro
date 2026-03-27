@@ -59,11 +59,25 @@ export const members = sqliteTable("members", {
   tenantIdx: index("idx_members_tenant").on(t.tenantId),
 }));
 
+// ── Sedes (locations) ───────────────────────────────────────────────────────
+
+export const sedes = sqliteTable("sedes", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id),
+  name: text("name").notNull(),
+  address: text("address").default(""),
+  city: text("city").default(""),
+  createdAt: timestamp(),
+}, (t) => ({
+  tenantIdx: index("idx_sedes_tenant").on(t.tenantId),
+}));
+
 // ── Courts ───────────────────────────────────────────────────────────────────
 
 export const courts = sqliteTable("courts", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull().references(() => tenants.id),
+  sedeId: text("sede_id").references(() => sedes.id),
   name: text("name").notNull(),
   sport: text("sport", { enum: ["padel", "tenis", "futbol", "squash", "pickleball", "frontenis", "otro"] }).notNull().default("padel"),
   type: text("type", { enum: ["indoor", "outdoor", "covered"] }).notNull(),
@@ -202,7 +216,7 @@ export const addOns = sqliteTable("add_ons", {
   description: text("description").notNull(),
   icon: text("icon").notNull().default("package"), // lucide icon name
   tier: text("tier", { enum: ["a", "b", "c", "d"] }).notNull().default("a"),
-  priceType: text("price_type", { enum: ["flat_monthly", "per_unit", "percentage"] }).notNull(),
+  priceType: text("price_type", { enum: ["flat_monthly", "per_unit", "percentage", "included"] }).notNull(),
   price: real("price").notNull(),
   availableOnPlans: text("available_on_plans").notNull().default('["starter","pro","business"]'), // JSON
   status: text("status", { enum: ["active", "beta", "deprecated"] }).notNull().default("active"),

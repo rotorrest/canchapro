@@ -47,6 +47,13 @@ node_modules/
 web/dist/
 web/.vite/
 
+# Next.js
+landing/.next/
+landing/out/
+
+# Build artifacts
+*.tsbuildinfo
+
 # Expo / React Native
 mobile/.expo/
 mobile/dist/

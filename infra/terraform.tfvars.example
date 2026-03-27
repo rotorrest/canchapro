@@ -1,0 +1,5 @@
+cloudflare_api_token  = "your-api-token-here"
+cloudflare_account_id = "your-account-id-here"
+cloudflare_zone_id    = "" # Set after adding domain to Cloudflare
+domain                = "canchapro.com"
+environment           = "production"

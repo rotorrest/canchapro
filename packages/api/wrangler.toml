@@ -1,0 +1,39 @@
+name = "canchapro-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+JWT_SECRET = "change-me-in-production"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "canchapro-db"
+database_id = "" # Set after terraform apply
+
+# KV Namespaces
+[[kv_namespaces]]
+binding = "TENANT_KV"
+id = "" # Set after terraform apply
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "" # Set after terraform apply
+
+# R2 Bucket
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "canchapro-uploads"
+
+# Queues (producer)
+[[queues.producers]]
+binding = "NOTIFICATIONS_QUEUE"
+queue = "canchapro-notifications"
+
+# Routes
+[env.production]
+routes = [
+  { pattern = "api.canchapro.com/*", zone_name = "canchapro.com" }
+]

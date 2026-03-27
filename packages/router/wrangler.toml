@@ -1,0 +1,20 @@
+name = "canchapro-router"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+WEB_APP_URL = "https://canchapro-web.pages.dev"
+
+[[kv_namespaces]]
+binding = "TENANT_KV"
+id = "" # Set after terraform apply
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "canchapro-uploads"
+
+[env.production]
+routes = [
+  { pattern = "*.canchapro.com/*", zone_name = "canchapro.com" }
+]

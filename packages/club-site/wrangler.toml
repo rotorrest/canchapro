@@ -1,0 +1,11 @@
+name = "canchapro-club-site"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "TENANT_KV"
+id = "" # Set after terraform apply
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "canchapro-uploads"

@@ -1,0 +1,21 @@
+{
+  "name": "canchapro",
+  "private": true,
+  "scripts": {
+    "dev:api": "turbo run dev --filter=@canchapro/api",
+    "dev:web": "turbo run dev --filter=@canchapro/web",
+    "dev:landing": "turbo run dev --filter=@canchapro/landing",
+    "dev:admin": "turbo run dev --filter=@canchapro/admin",
+    "dev:router": "turbo run dev --filter=@canchapro/router",
+    "dev:club-site": "turbo run dev --filter=@canchapro/club-site",
+    "build": "turbo run build",
+    "deploy": "turbo run deploy",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "turbo run db:generate --filter=@canchapro/api",
+    "db:migrate": "turbo run db:migrate --filter=@canchapro/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

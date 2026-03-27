@@ -17,7 +17,7 @@ function getSlot(hour: number): "morning" | "afternoon" | "evening" {
 }
 
 function getDayType(date: string): "weekday" | "weekend" {
-  const day = new Date(date).getDay(); // 0=Sun, 6=Sat
+  const day = new Date(date + "T12:00:00Z").getUTCDay(); // Use noon UTC to avoid date-shift
   return day === 0 || day === 6 ? "weekend" : "weekday";
 }
 
@@ -275,8 +275,8 @@ courts.get("/:id/availability", async (c) => {
 
   if (!date) return c.json({ error: "date query param required" }, 400);
 
-  // Get schedule for this day of week
-  const dayOfWeek = new Date(date).getDay();
+  // Get schedule for this day of week (use noon UTC to avoid date-shift)
+  const dayOfWeek = new Date(date + "T12:00:00Z").getUTCDay();
   const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // JS Sun=0, we use Mon=0
 
   const schedule = await db.query.courtSchedules.findFirst({

@@ -14,14 +14,17 @@ type SlotName = "morning" | "afternoon" | "evening";
 type DayType = "weekday" | "weekend";
 
 function resolveSlot(startTime: string): SlotName {
-  const hour = new Date(startTime).getUTCHours();
+  // Parse hour from ISO-like string "YYYY-MM-DDTHH:mm:ss" to avoid UTC/local timezone issues
+  const hour = parseInt(startTime.slice(11, 13), 10);
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";
 }
 
 function resolveDayType(startTime: string): DayType {
-  const day = new Date(startTime).getUTCDay(); // 0=Sun, 6=Sat
+  // Parse date portion to determine day of week
+  const datePart = startTime.slice(0, 10); // "YYYY-MM-DD"
+  const day = new Date(datePart + "T12:00:00Z").getUTCDay(); // Use noon UTC to avoid date-shift
   return day === 0 || day === 6 ? "weekend" : "weekday";
 }
 

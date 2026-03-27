@@ -16,7 +16,6 @@ interface BookingCancelledMessage {
   tenantId: string;
   bookingId: string;
   memberId: string;
-  creditsReturned: number;
 }
 
 interface BookingReminderMessage {
@@ -30,13 +29,26 @@ interface WelcomeMemberMessage {
   type: "welcome_member";
   tenantId: string;
   userId: string;
+  memberId: string;
+  email: string;
+  name: string;
+  phone?: string;
+  tempPassword: string;
+}
+
+interface WelcomeStaffMessage {
+  type: "welcome_staff";
+  tenantId: string;
+  userId: string;
+  email: string;
+  name: string;
   tempPassword: string;
 }
 
 interface PasswordResetMessage {
   type: "password_reset";
-  tenantId: string;
-  userId: string;
+  tenantId: string | null;
+  email: string;
   code: string;
 }
 
@@ -45,6 +57,7 @@ export type NotificationMessage =
   | BookingCancelledMessage
   | BookingReminderMessage
   | WelcomeMemberMessage
+  | WelcomeStaffMessage
   | PasswordResetMessage;
 
 // ── WhatsApp sender stub ────────────────────────────────────────────────────
@@ -102,7 +115,7 @@ async function handleBookingCancelled(msg: BookingCancelledMessage, env: Binding
   const court = await db.query.courts.findFirst({ where: eq(schema.courts.id, booking.courtId) });
   if (!court) return;
 
-  const message = `Hola ${user.name}, tu reserva en ${court.name} el ${formatDate(booking.startTime)} fue cancelada. Se devolvieron ${msg.creditsReturned} creditos a tu saldo.`;
+  const message = `Hola ${user.name}, tu reserva en ${court.name} el ${formatDate(booking.startTime)} fue cancelada. Se devolvieron ${booking.creditsDeducted} creditos a tu saldo.`;
   await sendWhatsApp(user.email, message);
 }
 
@@ -128,8 +141,18 @@ async function handleBookingReminder(msg: BookingReminderMessage, env: Bindings)
 async function handleWelcomeMember(msg: WelcomeMemberMessage, env: Bindings): Promise<void> {
   const db = createDb(env.DB);
 
-  const user = await db.query.users.findFirst({ where: eq(schema.users.id, msg.userId) });
-  if (!user) return;
+  const branding = await db.query.tenantBranding.findFirst({
+    where: eq(schema.tenantBranding.tenantId, msg.tenantId),
+  });
+
+  const clubName = branding?.clubName ?? "CanchaPro";
+
+  const message = `Bienvenido a ${clubName}! Tu usuario es ${msg.email} y tu contrasena temporal es ${msg.tempPassword}. Cambiala al ingresar.`;
+  await sendWhatsApp(msg.email, message);
+}
+
+async function handleWelcomeStaff(msg: WelcomeStaffMessage, env: Bindings): Promise<void> {
+  const db = createDb(env.DB);
 
   const branding = await db.query.tenantBranding.findFirst({
     where: eq(schema.tenantBranding.tenantId, msg.tenantId),
@@ -137,18 +160,13 @@ async function handleWelcomeMember(msg: WelcomeMemberMessage, env: Bindings): Pr
 
   const clubName = branding?.clubName ?? "CanchaPro";
 
-  const message = `Bienvenido a ${clubName}! Tu usuario es ${user.email} y tu contrasena temporal es ${msg.tempPassword}. Cambiala al ingresar.`;
-  await sendWhatsApp(user.email, message);
+  const message = `Hola ${msg.name}, se te asigno acceso de staff a ${clubName}. Tu usuario es ${msg.email} y tu contrasena temporal es ${msg.tempPassword}. Cambiala al ingresar.`;
+  await sendWhatsApp(msg.email, message);
 }
 
 async function handlePasswordReset(msg: PasswordResetMessage, env: Bindings): Promise<void> {
-  const db = createDb(env.DB);
-
-  const user = await db.query.users.findFirst({ where: eq(schema.users.id, msg.userId) });
-  if (!user) return;
-
   const message = `Tu codigo de recuperacion es: ${msg.code}. Valido por 15 minutos.`;
-  await sendWhatsApp(user.email, message);
+  await sendWhatsApp(msg.email, message);
 }
 
 // ── Queue consumer ──────────────────────────────────────────────────────────
@@ -169,6 +187,9 @@ export default {
             break;
           case "welcome_member":
             await handleWelcomeMember(msg.body, env);
+            break;
+          case "welcome_staff":
+            await handleWelcomeStaff(msg.body, env);
             break;
           case "password_reset":
             await handlePasswordReset(msg.body, env);

@@ -8,7 +8,6 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
-  Clock,
   CreditCard,
   FileSpreadsheet,
   Headphones,
@@ -182,7 +181,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return TENANT_ADD_ONS
       .filter((ta) => ta.tenantId === td.tenantId && !ta.cancelledAt)
       .map((ta) => ADD_ONS_CATALOG.find((a) => a.id === ta.addOnId))
-      .filter(Boolean);
+      .filter((a): a is NonNullable<typeof a> => Boolean(a));
   }, [isPlatform, isMember, td.tenantId]);
 
   const sidebarBrand = isPlatform ? "CanchaPro" : (tenantName ?? branding.clubName);

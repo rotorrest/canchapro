@@ -24,6 +24,13 @@ export default function BookCourtPage() {
   const member = user ? getMemberByUserId(user.id) : undefined;
   const { selectedSede, setSelectedSede } = useSedeStore();
 
+  // Auto-select first sede for members in multi-sede clubs
+  useEffect(() => {
+    if (td.hasMultipleSedes && !selectedSede && td.sedes.length > 0) {
+      setSelectedSede(td.sedes[0].id);
+    }
+  }, [td.hasMultipleSedes, td.sedes, selectedSede, setSelectedSede]);
+
   const activeCourts = td.courts.filter((c) => c.isActive && (!selectedSede || c.sedeId === selectedSede));
 
   const [creditBalance, setCreditBalance] = useState(member?.creditBalance ?? 0);
@@ -31,6 +38,13 @@ export default function BookCourtPage() {
   const [date, setDate] = useState(() => new Date());
   const [confirming, setConfirming] = useState<TimeSlot | null>(null);
   const [booked, setBooked] = useState<TimeSlot | null>(null);
+
+  // Auto-select first court when courts list changes
+  useEffect(() => {
+    if (activeCourts.length > 0 && !activeCourts.find((c) => c.id === selectedCourt)) {
+      setSelectedCourt(activeCourts[0].id);
+    }
+  }, [activeCourts, selectedCourt]);
 
   // Auto-dismiss success banner after 4 seconds
   useEffect(() => {
@@ -105,6 +119,7 @@ export default function BookCourtPage() {
           selected={selectedSede}
           onChange={(id) => {
             setSelectedSede(id);
+            setSelectedCourt("");
             setBooked(null);
             setConfirming(null);
           }}

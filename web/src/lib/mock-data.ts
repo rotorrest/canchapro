@@ -262,7 +262,7 @@ export interface Tenant {
   members: number;
   monthlyRevenue: number;
   status: "active" | "trial" | "suspended";
-  plan: "starter" | "pro" | "club";
+  plan: "starter" | "pro" | "business";
   branding: TenantBranding;
   createdAt: string;
 }

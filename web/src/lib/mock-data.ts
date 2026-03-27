@@ -275,9 +275,9 @@ export const DEFAULT_BRANDING: TenantBranding = {
 };
 
 export const TENANTS: Tenant[] = [
-  { id: "t1", name: "Ica Padel Club", slug: "ica-padel", city: "Ica", courts: 4, members: 87, monthlyRevenue: 15000, status: "active", plan: "starter", branding: { primaryColor: "#1e3a8a", accentColor: "#3b82f6", logoUrl: null, clubName: "Ica Padel Club" }, createdAt: "2026-01-15T00:00:00" },
-  { id: "t2", name: "Lima Padel Center", slug: "lima-padel", city: "Lima", courts: 8, members: 210, monthlyRevenue: 42000, status: "active", plan: "pro", branding: { primaryColor: "#065f46", accentColor: "#10b981", logoUrl: null, clubName: "Lima Padel Center" }, createdAt: "2026-02-01T00:00:00" },
-  { id: "t3", name: "Arequipa Smash", slug: "aqp-smash", city: "Arequipa", courts: 3, members: 45, monthlyRevenue: 8500, status: "trial", plan: "starter", branding: { primaryColor: "#7c2d12", accentColor: "#f97316", logoUrl: null, clubName: "Arequipa Smash" }, createdAt: "2026-03-10T00:00:00" },
+  { id: "t1", name: "Ica Padel Club", slug: "ica-padel", city: "Ica", courts: 4, members: 87, monthlyRevenue: 15000, status: "active", plan: "pro", branding: { primaryColor: "#1e3a8a", accentColor: "#3b82f6", logoUrl: null, clubName: "Ica Padel Club" }, createdAt: "2026-01-15T00:00:00" },
+  { id: "t2", name: "Lima Padel Center", slug: "lima-padel", city: "Lima", courts: 8, members: 210, monthlyRevenue: 42000, status: "active", plan: "business", branding: { primaryColor: "#065f46", accentColor: "#10b981", logoUrl: null, clubName: "Lima Padel Center" }, createdAt: "2026-02-01T00:00:00" },
+  { id: "t3", name: "Arequipa Smash", slug: "aqp-smash", city: "Arequipa", courts: 3, members: 45, monthlyRevenue: 8500, status: "trial", plan: "pro", branding: { primaryColor: "#7c2d12", accentColor: "#f97316", logoUrl: null, clubName: "Arequipa Smash" }, createdAt: "2026-03-10T00:00:00" },
   { id: "t4", name: "Trujillo Padel Club", slug: "trujillo-padel", city: "Trujillo", courts: 6, members: 130, monthlyRevenue: 25000, status: "active", plan: "pro", branding: { primaryColor: "#581c87", accentColor: "#a855f7", logoUrl: null, clubName: "Trujillo Padel Club" }, createdAt: "2026-02-20T00:00:00" },
   { id: "t5", name: "Cusco Sport Center", slug: "cusco-sport", city: "Cusco", courts: 2, members: 30, monthlyRevenue: 0, status: "suspended", plan: "starter", branding: { primaryColor: "#1e3a8a", accentColor: "#3b82f6", logoUrl: null, clubName: "Cusco Sport Center" }, createdAt: "2025-12-01T00:00:00" },
 ];
@@ -334,17 +334,25 @@ export function getTenantById(id: string): Tenant | undefined {
 
 // ── Billing Periods ──────────────────────────────────────────────────────────
 
-function billingPeriod(tenantId: string, month: string, bookings: number, status: BillingPeriod["status"], paidAt: string | null = null): BillingPeriod {
-  const base = 99;
-  const perBooking = Math.round(bookings * 0.5 * 100) / 100;
+// Pricing aligned with landing page (customer-facing prices)
+const PLAN_PRICING: Record<string, { base: number; feePerBooking: number; freeBookings: number }> = {
+  starter: { base: 0, feePerBooking: 1.00, freeBookings: 150 },
+  pro:     { base: 79, feePerBooking: 0.80, freeBookings: 0 },
+  business:{ base: 149, feePerBooking: 0.50, freeBookings: 0 },
+};
+
+function billingPeriod(tenantId: string, plan: "starter" | "pro" | "business", month: string, bookings: number, status: BillingPeriod["status"], paidAt: string | null = null): BillingPeriod {
+  const pricing = PLAN_PRICING[plan];
+  const billableBookings = Math.max(0, bookings - pricing.freeBookings);
+  const perBooking = Math.round(billableBookings * pricing.feePerBooking * 100) / 100;
   return {
     id: `bp-${tenantId}-${month}`,
     tenantId,
     month,
     completedBookings: bookings,
-    baseFee: base,
+    baseFee: pricing.base,
     perBookingFee: perBooking,
-    total: base + perBooking,
+    total: pricing.base + perBooking,
     status,
     invoicedAt: status !== "pending" ? `${month}-01T00:00:00` : null,
     paidAt,
@@ -352,19 +360,19 @@ function billingPeriod(tenantId: string, month: string, bookings: number, status
 }
 
 export const BILLING_PERIODS: BillingPeriod[] = [
-  // Ica Padel Club (t1)
-  billingPeriod("t1", "2026-01", 980, "paid", "2026-02-05T00:00:00"),
-  billingPeriod("t1", "2026-02", 1050, "paid", "2026-03-03T00:00:00"),
-  billingPeriod("t1", "2026-03", 847, "pending"),
-  // Lima Padel Center (t2)
-  billingPeriod("t2", "2026-01", 2100, "paid", "2026-02-04T00:00:00"),
-  billingPeriod("t2", "2026-02", 2340, "paid", "2026-03-02T00:00:00"),
-  billingPeriod("t2", "2026-03", 1920, "pending"),
-  // Arequipa Smash (t3) — trial, started March
-  billingPeriod("t3", "2026-03", 310, "pending"),
-  // Trujillo Padel Club (t4)
-  billingPeriod("t4", "2026-02", 1600, "paid", "2026-03-05T00:00:00"),
-  billingPeriod("t4", "2026-03", 1450, "invoiced"),
+  // Ica Padel Club (t1) — pro plan (4 courts)
+  billingPeriod("t1", "pro", "2026-01", 980, "paid", "2026-02-05T00:00:00"),
+  billingPeriod("t1", "pro", "2026-02", 1050, "paid", "2026-03-03T00:00:00"),
+  billingPeriod("t1", "pro", "2026-03", 847, "pending"),
+  // Lima Padel Center (t2) — business plan (8 courts, multi-sede)
+  billingPeriod("t2", "business", "2026-01", 2100, "paid", "2026-02-04T00:00:00"),
+  billingPeriod("t2", "business", "2026-02", 2340, "paid", "2026-03-02T00:00:00"),
+  billingPeriod("t2", "business", "2026-03", 1920, "pending"),
+  // Arequipa Smash (t3) — pro plan, trial (3 courts)
+  billingPeriod("t3", "pro", "2026-03", 310, "pending"),
+  // Trujillo Padel Club (t4) — pro plan (6 courts)
+  billingPeriod("t4", "pro", "2026-02", 1600, "paid", "2026-03-05T00:00:00"),
+  billingPeriod("t4", "pro", "2026-03", 1450, "invoiced"),
 ];
 
 // ── Add-ons Catalog ─────────────────────────────────────────────────────────

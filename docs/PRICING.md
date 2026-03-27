@@ -8,14 +8,14 @@
 
 | Tier | Canchas | Base/mes | Fee/reserva |
 |---|---|---|---|
-| **Starter** | 1–2 | **Gratis** | **S/ 0.50** |
-| **Pro** | 3–9 | **S/ 79** | **S/ 0.35** |
-| **Business** | 10+ | **S/ 149** | **S/ 0.20** |
+| **Starter** | 1–2 | **Gratis** | **S/ 1.00** |
+| **Pro** | 3–9 | **S/ 79** | **S/ 0.80** |
+| **Business** | 10+ | **S/ 149** | **S/ 0.50** |
 
-- Starter: 150 reservas gratis/mes, luego S/ 0.50 por reserva
-- Pro y Business: reservas ilimitadas + fee operacional
+- Starter: 150 reservas gratis/mes, luego S/ 1.00 por reserva
+- Pro: reservas ilimitadas, incluye WhatsApp Recordatorios
+- Business: reservas ilimitadas, incluye WhatsApp Recordatorios + Multi-sede
 - **El fee baja al subir de plan** — incentivo real para upgrade
-- Ningún club paga más del 0.5% de su ingreso
 
 ---
 
@@ -23,10 +23,10 @@
 
 | Club | Canchas | Reservas/mes | Base | Variable | **Total** | Ingreso club | **% ingreso** |
 |---|---|---|---|---|---|---|---|
-| Micro | 2 | 200 | S/ 0 | S/ 25 | **S/ 25** | ~S/ 22,000 | 0.1% |
-| Pequeño | 5 | 700 | S/ 79 | S/ 245 | **S/ 324** | ~S/ 60,000 | 0.5% |
-| Mediano | 10 | 2,000 | S/ 149 | S/ 400 | **S/ 549** | ~S/ 120,000 | 0.5% |
-| Grande | 16 | 4,000 | S/ 149 | S/ 800 | **S/ 949** | ~S/ 240,000 | 0.4% |
+| Micro | 2 | 200 | S/ 0 | S/ 50 | **S/ 50** | ~S/ 22,000 | 0.2% |
+| Pequeño | 5 | 700 | S/ 79 | S/ 560 | **S/ 639** | ~S/ 60,000 | 1.1% |
+| Mediano | 10 | 2,000 | S/ 149 | S/ 1,000 | **S/ 1,149** | ~S/ 120,000 | 1.0% |
+| Grande | 16 | 4,000 | S/ 149 | S/ 2,000 | **S/ 2,149** | ~S/ 240,000 | 0.9% |
 
 *Ingreso club estimado: canchas × 16 hrs/dia × 30 dias × ocupacion × S/ 110 promedio.*
 
@@ -38,10 +38,10 @@
 
 | | Starter | Pro | Business |
 |---|---|---|---|
-| Pago mensual promedio | S/ 25 | S/ 324 | S/ 549 |
-| Costo infra por club | S/ 5 | S/ 15 | S/ 25 |
-| **Profit por club** | **S/ 20** | **S/ 309** | **S/ 524** |
-| **Margen** | 80% | 95% | 95% |
+| Pago mensual promedio | S/ 50 | S/ 639 | S/ 1,149 |
+| Costo infra por club (incl. WhatsApp) | S/ 5 | S/ 115 | S/ 165 |
+| **Profit por club** | **S/ 45** | **S/ 524** | **S/ 984** |
+| **Margen** | 90% | 82% | 86% |
 
 ---
 
@@ -202,7 +202,7 @@ CREATE TABLE invoices (
 STARTER (Gratis)              PRO (S/ 79/mes)             BUSINESS (S/ 149/mes)
 1–2 canchas                   3–9 canchas                  10+ canchas
 150 reservas gratis/mes       Reservas ilimitadas          Reservas ilimitadas
-+ S/ 0.50/reserva extra       + S/ 0.35/reserva            + S/ 0.20/reserva
++ S/ 1.00/reserva extra       + S/ 0.80/reserva            + S/ 0.50/reserva
 
 ✓ Reservas online             ✓ Todo en Starter            ✓ Todo en Pro
 ✓ Gestion de socios           ✓ Dashboard y metricas       ✓ Multi-sede

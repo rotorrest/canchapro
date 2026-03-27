@@ -48,8 +48,6 @@ export default function CourtsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCourtId, setEditingCourtId] = useState<string | null>(null);
   const [form, setForm] = useState<CourtFormData>(EMPTY_FORM);
-  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
-  const [expandedCourt, setExpandedCourt] = useState<string | null>(null);
   const [tab, setTab] = useState<"courts" | "availability" | "blocks">("courts");
   const [blocks, setBlocks] = useState<CourtBlock[]>(td.courtBlocks);
   const [blockModal, setBlockModal] = useState(false);
@@ -61,23 +59,6 @@ export default function CourtsPage() {
   function openAdd() {
     setEditingCourtId(null);
     setForm({ ...EMPTY_FORM, sedeId: td.sedes.length > 0 ? td.sedes[0].id : "" });
-    setModalOpen(true);
-  }
-
-  // ── Open modal to edit (creates a new version) ─────────────────────────────
-  function openEdit(court: Court) {
-    const v = getCurrentVersion(court);
-    setEditingCourtId(court.id);
-    setForm({
-      name: v.name,
-      sport: v.sport,
-      type: v.type,
-      surface: v.surface,
-      capacity: v.capacity,
-      priceMultiplier: v.priceMultiplier,
-      sedeId: court.sedeId ?? "",
-      reason: "",
-    });
     setModalOpen(true);
   }
 
@@ -141,31 +122,11 @@ export default function CourtsPage() {
     setEditingCourtId(null);
   }
 
-  function toggleActive(id: string) {
-    setCourts(courts.map((c) => (c.id === id ? { ...c, isActive: !c.isActive } : c)));
-  }
-
   function confirmDeactivate() {
     if (!deactivateModal) return;
     setCourts(courts.map((c) => (c.id === deactivateModal.courtId ? { ...c, isActive: false } : c)));
     setDeactivateModal(null);
     setDeactivateReason("");
-  }
-
-  function toggleHistory(id: string) {
-    setExpandedHistory(expandedHistory === id ? null : id);
-  }
-
-  // ── Detect what changed between two versions ──────────────────────────────
-  function getChanges(prev: CourtVersion, curr: CourtVersion): string[] {
-    const changes: string[] = [];
-    if (prev.name !== curr.name) changes.push(`Nombre: ${prev.name} → ${curr.name}`);
-    if (prev.sport !== curr.sport) changes.push(`Deporte: ${getSportLabel(prev.sport)} → ${getSportLabel(curr.sport)}`);
-    if (prev.type !== curr.type) changes.push(`Tipo: ${getCourtTypeLabel(prev.type)} → ${getCourtTypeLabel(curr.type)}`);
-    if (prev.surface !== curr.surface) changes.push(`Superficie: ${prev.surface} → ${curr.surface}`);
-    if (prev.capacity !== curr.capacity) changes.push(`Capacidad: ${prev.capacity} → ${curr.capacity}`);
-    if (prev.priceMultiplier !== curr.priceMultiplier) changes.push(`Multiplicador: ×${prev.priceMultiplier} → ×${curr.priceMultiplier}`);
-    return changes;
   }
 
   // ── Conflict detection ─────────────────────────────────────────────────────
@@ -204,6 +165,9 @@ export default function CourtsPage() {
 
     const newBlock: CourtBlock = {
       id: `cb${Date.now()}`,
+      tenantId: td.tenantId ?? "t1",
+      scope: "court",
+      sedeId: selectedSede ?? null,
       courtId: blockForm.courtId,
       date: blockForm.date,
       startTime: blockForm.startTime || null,

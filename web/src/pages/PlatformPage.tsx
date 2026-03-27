@@ -35,9 +35,9 @@ function getPlanBadge(plan: Tenant["plan"]) {
   const styles = {
     starter: "bg-gray-100 text-gray-600",
     pro: "bg-blue-100 text-blue-700",
-    club: "bg-amber-100 text-amber-700",
+    business: "bg-amber-100 text-amber-700",
   };
-  const labels = { starter: "Starter", pro: "Pro", club: "Club" };
+  const labels = { starter: "Starter", pro: "Pro", business: "Business" };
   return (
     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${styles[plan]}`}>
       {labels[plan]}

@@ -366,7 +366,7 @@ function ReportesSunatConfig() {
 }
 
 function RfidConfig() {
-  const [registered, setRegistered] = useState(12);
+  const registered = 12;
 
   return (
     <div className="space-y-5">
@@ -437,7 +437,6 @@ function ComunicacionesConfig() {
 
 function DominioConfig() {
   const [domain, setDomain] = useState("");
-  const [verified, setVerified] = useState(false);
 
   return (
     <div className="space-y-5">

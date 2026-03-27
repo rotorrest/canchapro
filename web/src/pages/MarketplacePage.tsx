@@ -290,8 +290,7 @@ function AddOnCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MarketplacePage() {
-  const { user, tenantId } = useAuthStore();
-  const isPlatform = user?.role === "platform_admin";
+  const { tenantId } = useAuthStore();
   const tenant = tenantId ? getTenantById(tenantId) : null;
 
   const [tenantAddOns, setTenantAddOns] = useState<TenantAddOn[]>(TENANT_ADD_ONS);

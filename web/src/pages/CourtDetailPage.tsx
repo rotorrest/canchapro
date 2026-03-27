@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useTenantData } from "@/hooks/useTenantData";
 import {
@@ -20,7 +20,6 @@ import {
   Trash2,
   X,
   AlertTriangle,
-  Check,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import PadelIcon from "@/components/PadelIcon";
@@ -40,7 +39,6 @@ type CourtFormData = {
 
 export default function CourtDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const td = useTenantData();
 
@@ -51,12 +49,11 @@ export default function CourtDetailPage() {
   const [blockModal, setBlockModal] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [deactivateModal, setDeactivateModal] = useState(false);
-  const [deactivateReason, setDeactivateReason] = useState("");
   const [blockForm, setBlockForm] = useState({ date: "", startTime: "", endTime: "", reason: "" });
   const [forceBlock, setForceBlock] = useState(false);
 
-  const court = courts.find((c) => c.id === id);
-  if (!court) {
+  const maybeCourt = courts.find((c) => c.id === id);
+  if (!maybeCourt) {
     return (
       <div className="space-y-4">
         <Link to="/courts" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium">
@@ -69,6 +66,7 @@ export default function CourtDetailPage() {
     );
   }
 
+  const court: Court = maybeCourt;
   const v = getCurrentVersion(court);
   const courtSchedules = schedules.filter((s) => s.courtId === court.id).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
   const courtBlocks = blocks.filter((b) => b.courtId === court.id);
@@ -116,7 +114,6 @@ export default function CourtDetailPage() {
   function toggleActive() {
     setCourts(courts.map((c) => (c.id === court.id ? { ...c, isActive: !c.isActive } : c)));
     setDeactivateModal(false);
-    setDeactivateReason("");
   }
 
   // ── Version diff ─────────────────────────────────────────────────────────
@@ -157,7 +154,8 @@ export default function CourtDetailPage() {
     if (!blockForm.date) return;
     if (hasConflicts && !forceBlock) return;
     setBlocks([...blocks, {
-      id: `cb${Date.now()}`, courtId: court.id, date: blockForm.date,
+      id: `cb${Date.now()}`, tenantId: court.tenantId, scope: "court", sedeId: court.sedeId,
+      courtId: court.id, date: blockForm.date,
       startTime: blockForm.startTime || null, endTime: blockForm.endTime || null, reason: blockForm.reason,
     }]);
     setBlockModal(false);

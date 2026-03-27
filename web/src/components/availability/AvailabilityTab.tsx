@@ -3,16 +3,12 @@ import { useTenantData } from "@/hooks/useTenantData";
 import type {
   AvailabilityConfig,
   Schedule,
-  ScheduleVersion,
-  ScheduleDayConfig,
-  ScheduleTimeRange,
   SpecialDay,
   Court,
 } from "@/lib/mock-data";
 import {
   getCurrentVersion,
   getCurrentScheduleVersion,
-  getActiveScheduleForCourt,
   generateSlots,
   getSportEmoji,
 } from "@/lib/mock-data";
@@ -23,24 +19,16 @@ import {
   CalendarDays,
   Plus,
   Trash2,
-  X,
   Check,
-  ChevronDown,
-  ChevronRight,
   AlertCircle,
   Eye,
-  Shield,
-  Timer,
   Ban,
   Pencil,
 } from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
 import DatePicker from "@/components/DatePicker";
-import { format, addDays } from "date-fns";
-import PadelIcon from "@/components/PadelIcon";
+import { addDays } from "date-fns";
 
 const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
-const DAY_FULL = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
 
 const SLOT_DURATIONS = [
   { value: 30, label: "30 min" },
@@ -59,12 +47,6 @@ const PRICE_COLORS = [
 
 function priceColor(price: number) {
   return PRICE_COLORS.find((c) => price <= c.max) ?? PRICE_COLORS[PRICE_COLORS.length - 1];
-}
-
-function minutesToHHMM(m: number): string {
-  const h = Math.floor(m / 60);
-  const min = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
 // ── Config Global Section ────────────────────────────────────────────────────
@@ -420,15 +402,6 @@ function PreviewSection({ courts }: { courts: Court[] }) {
   }, [previewDate, previewCourt]);
 
   const activeCourts = courts.filter((c) => c.isActive);
-
-  const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-    available: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", label: "Disponible" },
-    occupied: { bg: "bg-blue-50 border-blue-200", text: "text-blue-700", label: "Ocupado" },
-    blocked: { bg: "bg-red-50 border-red-200", text: "text-red-500", label: "Bloqueado" },
-    past: { bg: "bg-gray-100 border-gray-200", text: "text-gray-400", label: "Pasado" },
-    too_soon: { bg: "bg-amber-50 border-amber-200", text: "text-amber-600", label: "Muy pronto" },
-    buffer: { bg: "bg-gray-50 border-gray-200", text: "text-gray-400", label: "Buffer" },
-  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

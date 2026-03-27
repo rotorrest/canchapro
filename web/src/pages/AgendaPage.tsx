@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   BOOKINGS,
-  COURT_BLOCKS,
   MEMBERS,
   getCurrentVersion,
   getActiveScheduleForCourt,
@@ -90,7 +89,6 @@ function getWeekDaySummary(
       const sedeId = court.sedeId ?? null;
       const blocked = isBlocked(court.id, date, h, tenantId, sedeId);
       if (blocked) { blockedSlots++; continue; }
-      const key = `${court.id}-${h}`;
       const booked = dayBookings.some((b) => {
         const bHour = parseInt(b.startTime.split("T")[1].split(":")[0]);
         return b.courtId === court.id && bHour === h;

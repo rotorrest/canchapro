@@ -1,8 +1,15 @@
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import {
+  createTenantSchema,
+  updateTenantSchema,
+  paginationSchema,
+  paginate,
+} from "../lib/validation";
 
 const platform = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -15,18 +22,19 @@ platform.use("/*", requireRole("platform_admin"));
 // GET /tenants — list all
 platform.get("/tenants", async (c) => {
   const db = createDb(c.env.DB);
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const tenants = await db.query.tenants.findMany();
   const brandings = await db.query.tenantBranding.findMany();
 
   const brandingMap = new Map(brandings.map((b) => [b.tenantId, b]));
 
-  return c.json({
-    data: tenants.map((t) => ({
-      ...t,
-      branding: brandingMap.get(t.id) ?? null,
-    })),
-  });
+  const data = tenants.map((t) => ({
+    ...t,
+    branding: brandingMap.get(t.id) ?? null,
+  }));
+
+  return c.json(paginate(data, { page, limit }));
 });
 
 // GET /tenants/:id
@@ -49,9 +57,14 @@ platform.get("/tenants/:id", async (c) => {
 // POST /tenants — create
 platform.post("/tenants", async (c) => {
   const db = createDb(c.env.DB);
-  const body = await c.req.json<{
-    slug: string; name: string; plan?: string; customDomain?: string;
-  }>();
+
+  let body;
+  try {
+    body = createTenantSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const id = crypto.randomUUID();
 
@@ -59,7 +72,7 @@ platform.post("/tenants", async (c) => {
     id,
     slug: body.slug.toLowerCase(),
     name: body.name,
-    plan: (body.plan as "starter" | "pro" | "business") ?? "starter",
+    plan: body.plan,
     status: "trial",
   });
 
@@ -86,9 +99,14 @@ platform.post("/tenants", async (c) => {
 platform.put("/tenants/:id", async (c) => {
   const db = createDb(c.env.DB);
   const { id } = c.req.param();
-  const body = await c.req.json<{
-    name?: string; plan?: string; status?: string; customDomain?: string;
-  }>();
+
+  let body;
+  try {
+    body = updateTenantSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const existing = await db.query.tenants.findFirst({
     where: eq(schema.tenants.id, id),
@@ -125,6 +143,7 @@ platform.put("/tenants/:id", async (c) => {
 platform.get("/billing", async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.req.query("tenantId");
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   let result;
   if (tenantId) {
@@ -135,7 +154,7 @@ platform.get("/billing", async (c) => {
     result = await db.query.invoices.findMany();
   }
 
-  return c.json({ data: result });
+  return c.json(paginate(result, { page, limit }));
 });
 
 // POST /billing/invoices — generate invoice for a tenant+period

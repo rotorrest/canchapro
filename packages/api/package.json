@@ -13,8 +13,9 @@
   },
   "dependencies": {
     "@canchapro/shared": "workspace:*",
+    "drizzle-orm": "^0.36.0",
     "hono": "^4.6.0",
-    "drizzle-orm": "^0.36.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",

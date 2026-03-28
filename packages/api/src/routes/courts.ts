@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import { eq, and, lte } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import {
+  createCourtSchema,
+  updateCourtSchema,
+  createBlockSchema,
+  paginationSchema,
+  paginate,
+} from "../lib/validation";
 
 const courts = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -27,12 +35,13 @@ function getDayType(date: string): "weekday" | "weekend" {
 courts.get("/", async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const result = await db.query.courts.findMany({
     where: eq(schema.courts.tenantId, tenantId),
   });
 
-  return c.json({ data: result });
+  return c.json(paginate(result, { page, limit }));
 });
 
 // GET /courts/:id — single court
@@ -54,7 +63,14 @@ courts.post("/", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const user = c.get("user");
-  const body = await c.req.json();
+
+  let body;
+  try {
+    body = createCourtSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const id = crypto.randomUUID();
 
@@ -63,10 +79,10 @@ courts.post("/", requireRole("super_admin", "staff"), async (c) => {
     tenantId,
     sedeId: body.sedeId ?? null,
     name: body.name,
-    sport: body.sport ?? "padel",
+    sport: body.sport,
     type: body.type,
     surface: body.surface,
-    capacity: body.capacity ?? 4,
+    capacity: body.capacity,
     isActive: true,
     createdBy: user.id,
   });
@@ -80,7 +96,14 @@ courts.put("/:id", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const { id } = c.req.param();
-  const body = await c.req.json();
+
+  let body;
+  try {
+    body = updateCourtSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   // Whitelist updatable fields to prevent overwriting id/tenantId
   const updates: Record<string, unknown> = {};
@@ -193,12 +216,13 @@ courts.put("/:id/schedule/:scheduleId", requireRole("super_admin", "staff"), asy
 courts.get("/:id/blocks", async (c) => {
   const db = createDb(c.env.DB);
   const { id } = c.req.param();
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const blocks = await db.query.courtBlocks.findMany({
     where: eq(schema.courtBlocks.courtId, id),
   });
 
-  return c.json({ data: blocks });
+  return c.json(paginate(blocks, { page, limit }));
 });
 
 // POST /courts/:id/blocks — create a block
@@ -206,14 +230,14 @@ courts.post("/:id/blocks", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const { id } = c.req.param();
   const user = c.get("user");
-  const body = await c.req.json<{
-    date: string;
-    startTime?: string | null;
-    endTime?: string | null;
-    reason?: string;
-  }>();
 
-  if (!body.date) return c.json({ error: "date is required" }, 400);
+  let body;
+  try {
+    body = createBlockSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const blockId = crypto.randomUUID();
 

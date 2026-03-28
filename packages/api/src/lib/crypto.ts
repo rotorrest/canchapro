@@ -1,20 +1,78 @@
 /**
- * Password hashing and JWT utilities using Web Crypto API
- * (available in Cloudflare Workers runtime)
+ * Password hashing (PBKDF2) and JWT utilities using Web Crypto API.
+ * Available in Cloudflare Workers runtime.
+ *
+ * Hash format: "pbkdf2:100000:<base64-salt>:<base64-hash>"
+ * This is self-contained — the salt and iteration count are in the hash string,
+ * so we don't need to store them separately.
  */
 
-/** Hash a password with SHA-256(password + salt) */
-export async function hashPassword(password: string, salt: string): Promise<string> {
+const PBKDF2_ITERATIONS = 100_000;
+const SALT_BYTES = 16;
+const KEY_BYTES = 32;
+
+/** Hash a password with PBKDF2-SHA256. Returns a portable hash string. */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = new Uint8Array(SALT_BYTES);
+  crypto.getRandomValues(salt);
+
   const encoder = new TextEncoder();
-  const data = encoder.encode(password + salt);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+
+  const hashBits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    keyMaterial,
+    KEY_BYTES * 8
+  );
+
+  const saltB64 = btoa(String.fromCharCode(...salt));
+  const hashB64 = btoa(String.fromCharCode(...new Uint8Array(hashBits)));
+
+  return `pbkdf2:${PBKDF2_ITERATIONS}:${saltB64}:${hashB64}`;
 }
 
-/** Verify a password against a stored hash */
-export async function verifyPassword(password: string, salt: string, storedHash: string): Promise<boolean> {
-  const hash = await hashPassword(password, salt);
-  return hash === storedHash;
+/** Verify a password against a stored PBKDF2 hash string. */
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  // Support legacy SHA-256 hashes (no "pbkdf2:" prefix) for migration
+  if (!storedHash.startsWith("pbkdf2:")) {
+    return false; // Reject legacy hashes — force password reset
+  }
+
+  const [, iterStr, saltB64, hashB64] = storedHash.split(":");
+  const iterations = parseInt(iterStr, 10);
+  const salt = Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0));
+  const expectedHash = Uint8Array.from(atob(hashB64), (c) => c.charCodeAt(0));
+
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+
+  const hashBits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    keyMaterial,
+    expectedHash.length * 8
+  );
+
+  const actualHash = new Uint8Array(hashBits);
+
+  // Constant-time comparison
+  if (actualHash.length !== expectedHash.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actualHash.length; i++) {
+    diff |= actualHash[i] ^ expectedHash[i];
+  }
+  return diff === 0;
 }
 
 /** Base64url encode (RFC 7515) */

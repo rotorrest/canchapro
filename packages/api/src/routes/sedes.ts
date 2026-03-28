@@ -1,8 +1,15 @@
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import {
+  createSedeSchema,
+  updateSedeSchema,
+  paginationSchema,
+  paginate,
+} from "../lib/validation";
 
 const sedes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -12,19 +19,27 @@ sedes.use("/*", authMiddleware);
 sedes.get("/", async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const result = await db.query.sedes.findMany({
     where: eq(schema.sedes.tenantId, tenantId),
   });
 
-  return c.json({ data: result });
+  return c.json(paginate(result, { page, limit }));
 });
 
 // POST /sedes — super_admin only
 sedes.post("/", requireRole("super_admin"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
-  const body = await c.req.json<{ name: string; address?: string; city?: string }>();
+
+  let body;
+  try {
+    body = createSedeSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const id = crypto.randomUUID();
 
@@ -32,8 +47,8 @@ sedes.post("/", requireRole("super_admin"), async (c) => {
     id,
     tenantId,
     name: body.name,
-    address: body.address ?? "",
-    city: body.city ?? "",
+    address: body.address,
+    city: body.city,
   });
 
   const sede = await db.query.sedes.findFirst({ where: eq(schema.sedes.id, id) });
@@ -45,7 +60,14 @@ sedes.put("/:id", requireRole("super_admin"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const { id } = c.req.param();
-  const body = await c.req.json();
+
+  let body;
+  try {
+    body = updateSedeSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   // Whitelist updatable fields to prevent overwriting id/tenantId
   const updates: Record<string, unknown> = {};

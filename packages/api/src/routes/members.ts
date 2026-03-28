@@ -1,9 +1,18 @@
 import { Hono } from "hono";
 import { eq, and, inArray } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
 import { hashPassword, generateTempPassword } from "../lib/crypto";
+import {
+  createMemberSchema,
+  updateMemberSchema,
+  creditAdjustSchema,
+  creditSaleSchema,
+  paginationSchema,
+  paginate,
+} from "../lib/validation";
 
 const members = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -95,7 +104,7 @@ members.post("/people", requireRole("super_admin"), async (c) => {
 
   const userId = crypto.randomUUID();
   const tempPassword = generateTempPassword();
-  const passwordHash = await hashPassword(tempPassword, userId);
+  const passwordHash = await hashPassword(tempPassword);
 
   await db.insert(schema.users).values({
     id: userId,
@@ -182,6 +191,7 @@ members.put("/people/:id", requireRole("super_admin"), async (c) => {
 members.get("/", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const result = await db.query.members.findMany({
     where: eq(schema.members.tenantId, tenantId),
@@ -206,22 +216,20 @@ members.get("/", requireRole("super_admin", "staff"), async (c) => {
     })
   );
 
-  return c.json({ data });
+  return c.json(paginate(data, { page, limit }));
 });
 
 // POST /members — create a new member (staff creates user + member)
 members.post("/", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
-  const body = await c.req.json<{
-    email: string;
-    name: string;
-    phone?: string;
-    creditAllocationMonthly?: number;
-  }>();
 
-  if (!body.email || !body.name) {
-    return c.json({ error: "email and name are required" }, 400);
+  let body;
+  try {
+    body = createMemberSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
   }
 
   const existing = await db.query.users.findFirst({
@@ -235,7 +243,7 @@ members.post("/", requireRole("super_admin", "staff"), async (c) => {
   const userId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
   const tempPassword = generateTempPassword();
-  const passwordHash = await hashPassword(tempPassword, userId);
+  const passwordHash = await hashPassword(tempPassword);
 
   await db.insert(schema.users).values({
     id: userId,
@@ -312,12 +320,14 @@ members.put("/:id", requireRole("super_admin", "staff"), async (c) => {
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const { id } = c.req.param();
-  const body = await c.req.json<{
-    name?: string;
-    email?: string;
-    status?: "active" | "suspended" | "inactive";
-    creditAllocationMonthly?: number;
-  }>();
+
+  let body;
+  try {
+    body = updateMemberSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const member = await db.query.members.findFirst({
     where: and(eq(schema.members.id, id), eq(schema.members.tenantId, tenantId)),
@@ -373,7 +383,14 @@ members.post("/:id/credits", requireRole("super_admin", "staff"), async (c) => {
   const tenantId = c.get("tenantId")!;
   const user = c.get("user");
   const { id } = c.req.param();
-  const body = await c.req.json<{ amount: number; reason: string }>();
+
+  let body;
+  try {
+    body = creditAdjustSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const member = await db.query.members.findFirst({
     where: and(eq(schema.members.id, id), eq(schema.members.tenantId, tenantId)),
@@ -404,15 +421,13 @@ members.post("/:id/credit-sales", requireRole("super_admin", "staff"), async (c)
   const tenantId = c.get("tenantId")!;
   const user = c.get("user");
   const { id } = c.req.param();
-  const body = await c.req.json<{
-    amount: number;
-    pricePaid: number;
-    paymentMethod: string;
-    description?: string;
-  }>();
 
-  if (!body.amount || !body.pricePaid || !body.paymentMethod) {
-    return c.json({ error: "amount, pricePaid, and paymentMethod are required" }, 400);
+  let body;
+  try {
+    body = creditSaleSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
   }
 
   const member = await db.query.members.findFirst({
@@ -468,6 +483,7 @@ members.get("/:id/transactions", requireRole("super_admin", "staff"), async (c) 
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const { id } = c.req.param();
+  const { page, limit } = paginationSchema.parse(c.req.query());
 
   const member = await db.query.members.findFirst({
     where: and(eq(schema.members.id, id), eq(schema.members.tenantId, tenantId)),
@@ -481,7 +497,7 @@ members.get("/:id/transactions", requireRole("super_admin", "staff"), async (c) 
     ),
   });
 
-  return c.json({ data: txs });
+  return c.json(paginate(txs, { page, limit }));
 });
 
 export default members;

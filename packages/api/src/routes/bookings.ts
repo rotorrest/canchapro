@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import { eq, and, desc, lte } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import {
+  createBookingSchema,
+  staffBookingSchema,
+  updateBookingStatusSchema,
+  paginationSchema,
+  paginate,
+} from "../lib/validation";
 
 const bookings = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -53,6 +61,7 @@ async function lookupCreditPrice(
 // ── GET /bookings ───────────────────────────────────────────────────────────
 
 bookings.get("/", async (c) => {
+  const { page, limit } = paginationSchema.parse({ page: c.req.query("page"), limit: c.req.query("limit") });
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const user = c.get("user");
@@ -62,7 +71,7 @@ bookings.get("/", async (c) => {
     const member = await db.query.members.findFirst({
       where: and(eq(schema.members.tenantId, tenantId), eq(schema.members.userId, user.id)),
     });
-    if (!member) return c.json({ data: [] });
+    if (!member) return c.json(paginate([], { page, limit }));
     result = await db.query.bookings.findMany({
       where: eq(schema.bookings.memberId, member.id),
     });
@@ -72,12 +81,13 @@ bookings.get("/", async (c) => {
     });
   }
 
-  return c.json({ data: result });
+  return c.json(paginate(result, { page, limit }));
 });
 
 // ── GET /bookings/me — member's own bookings with court name ────────────────
 
 bookings.get("/me", requireRole("member"), async (c) => {
+  const { page, limit } = paginationSchema.parse({ page: c.req.query("page"), limit: c.req.query("limit") });
   const db = createDb(c.env.DB);
   const tenantId = c.get("tenantId")!;
   const user = c.get("user");
@@ -85,7 +95,7 @@ bookings.get("/me", requireRole("member"), async (c) => {
   const member = await db.query.members.findFirst({
     where: and(eq(schema.members.tenantId, tenantId), eq(schema.members.userId, user.id)),
   });
-  if (!member) return c.json({ data: [] });
+  if (!member) return c.json(paginate([], { page, limit }));
 
   const rows = await db.query.bookings.findMany({
     where: and(eq(schema.bookings.memberId, member.id), eq(schema.bookings.tenantId, tenantId)),
@@ -104,223 +114,239 @@ bookings.get("/me", requireRole("member"), async (c) => {
     courtName: courtMap.get(b.courtId) ?? null,
   }));
 
-  return c.json({ data });
+  return c.json(paginate(data, { page, limit }));
 });
 
 // ── POST /bookings — member creates own booking ────────────────────────────
 
 bookings.post("/", requireRole("member"), async (c) => {
-  const db = createDb(c.env.DB);
-  const tenantId = c.get("tenantId")!;
-  const user = c.get("user");
-  const body = await c.req.json<{ courtId: string; startTime: string; endTime: string }>();
+  try {
+    const body = createBookingSchema.parse(await c.req.json());
+    const db = createDb(c.env.DB);
+    const tenantId = c.get("tenantId")!;
+    const user = c.get("user");
 
-  const member = await db.query.members.findFirst({
-    where: and(eq(schema.members.tenantId, tenantId), eq(schema.members.userId, user.id)),
-  });
-  if (!member) return c.json({ error: "Member not found" }, 404);
+    const member = await db.query.members.findFirst({
+      where: and(eq(schema.members.tenantId, tenantId), eq(schema.members.userId, user.id)),
+    });
+    if (!member) return c.json({ error: "Member not found" }, 404);
 
-  // Check double booking
-  const existing = await db.query.bookings.findFirst({
-    where: and(
-      eq(schema.bookings.courtId, body.courtId),
-      eq(schema.bookings.status, "confirmed"),
-      eq(schema.bookings.startTime, body.startTime),
-    ),
-  });
-  if (existing) return c.json({ error: "Court already booked" }, 409);
+    // Check double booking
+    const existing = await db.query.bookings.findFirst({
+      where: and(
+        eq(schema.bookings.courtId, body.courtId),
+        eq(schema.bookings.status, "confirmed"),
+        eq(schema.bookings.startTime, body.startTime),
+      ),
+    });
+    if (existing) return c.json({ error: "Court already booked" }, 409);
 
-  // Calculate credits from credit_prices table
-  const creditsRequired = await lookupCreditPrice(db, tenantId, body.startTime);
+    // Calculate credits from credit_prices table
+    const creditsRequired = await lookupCreditPrice(db, tenantId, body.startTime);
 
-  if (member.creditBalance < creditsRequired) {
-    return c.json({ error: "Insufficient credits" }, 400);
+    if (member.creditBalance < creditsRequired) {
+      return c.json({ error: "Insufficient credits" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+
+    await db.insert(schema.bookings).values({
+      id,
+      tenantId,
+      memberId: member.id,
+      courtId: body.courtId,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      creditsDeducted: creditsRequired,
+      status: "confirmed",
+    });
+
+    // Deduct credits
+    await db
+      .update(schema.members)
+      .set({ creditBalance: member.creditBalance - creditsRequired })
+      .where(eq(schema.members.id, member.id));
+
+    // Log transaction
+    await db.insert(schema.creditTransactions).values({
+      id: crypto.randomUUID(),
+      tenantId,
+      memberId: member.id,
+      amount: -creditsRequired,
+      type: "deduction",
+      reason: "Reserva",
+      bookingId: id,
+      createdBy: user.id,
+    });
+
+    // Queue notification
+    await c.env.NOTIFICATIONS_QUEUE.send({
+      type: "booking_confirmed",
+      tenantId,
+      bookingId: id,
+      memberId: member.id,
+    });
+
+    const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
+    return c.json({ data: booking }, 201);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return c.json({ error: "Validation error", details: err.errors.map(e => e.message) }, 400);
+    }
+    throw err;
   }
-
-  const id = crypto.randomUUID();
-
-  await db.insert(schema.bookings).values({
-    id,
-    tenantId,
-    memberId: member.id,
-    courtId: body.courtId,
-    startTime: body.startTime,
-    endTime: body.endTime,
-    creditsDeducted: creditsRequired,
-    status: "confirmed",
-  });
-
-  // Deduct credits
-  await db
-    .update(schema.members)
-    .set({ creditBalance: member.creditBalance - creditsRequired })
-    .where(eq(schema.members.id, member.id));
-
-  // Log transaction
-  await db.insert(schema.creditTransactions).values({
-    id: crypto.randomUUID(),
-    tenantId,
-    memberId: member.id,
-    amount: -creditsRequired,
-    type: "deduction",
-    reason: "Reserva",
-    bookingId: id,
-    createdBy: user.id,
-  });
-
-  // Queue notification
-  await c.env.NOTIFICATIONS_QUEUE.send({
-    type: "booking_confirmed",
-    tenantId,
-    bookingId: id,
-    memberId: member.id,
-  });
-
-  const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
-  return c.json({ data: booking }, 201);
 });
 
 // ── POST /bookings/staff — staff creates booking on behalf of member ────────
 
 bookings.post("/staff", requireRole("super_admin", "staff"), async (c) => {
-  const db = createDb(c.env.DB);
-  const tenantId = c.get("tenantId")!;
-  const user = c.get("user");
-  const body = await c.req.json<{
-    memberId: string;
-    courtId: string;
-    startTime: string;
-    endTime: string;
-  }>();
+  try {
+    const body = staffBookingSchema.parse(await c.req.json());
+    const db = createDb(c.env.DB);
+    const tenantId = c.get("tenantId")!;
+    const user = c.get("user");
 
-  const member = await db.query.members.findFirst({
-    where: and(eq(schema.members.id, body.memberId), eq(schema.members.tenantId, tenantId)),
-  });
-  if (!member) return c.json({ error: "Member not found" }, 404);
+    const member = await db.query.members.findFirst({
+      where: and(eq(schema.members.id, body.memberId), eq(schema.members.tenantId, tenantId)),
+    });
+    if (!member) return c.json({ error: "Member not found" }, 404);
 
-  // Check double booking
-  const existing = await db.query.bookings.findFirst({
-    where: and(
-      eq(schema.bookings.courtId, body.courtId),
-      eq(schema.bookings.status, "confirmed"),
-      eq(schema.bookings.startTime, body.startTime),
-    ),
-  });
-  if (existing) return c.json({ error: "Court already booked" }, 409);
+    // Check double booking
+    const existing = await db.query.bookings.findFirst({
+      where: and(
+        eq(schema.bookings.courtId, body.courtId),
+        eq(schema.bookings.status, "confirmed"),
+        eq(schema.bookings.startTime, body.startTime),
+      ),
+    });
+    if (existing) return c.json({ error: "Court already booked" }, 409);
 
-  // Calculate credits from credit_prices table
-  const creditsRequired = await lookupCreditPrice(db, tenantId, body.startTime);
+    // Calculate credits from credit_prices table
+    const creditsRequired = await lookupCreditPrice(db, tenantId, body.startTime);
 
-  if (member.creditBalance < creditsRequired) {
-    return c.json({ error: "Insufficient credits" }, 400);
+    if (member.creditBalance < creditsRequired) {
+      return c.json({ error: "Insufficient credits" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+
+    await db.insert(schema.bookings).values({
+      id,
+      tenantId,
+      memberId: member.id,
+      courtId: body.courtId,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      creditsDeducted: creditsRequired,
+      status: "confirmed",
+    });
+
+    // Deduct credits
+    await db
+      .update(schema.members)
+      .set({ creditBalance: member.creditBalance - creditsRequired })
+      .where(eq(schema.members.id, member.id));
+
+    // Log transaction
+    await db.insert(schema.creditTransactions).values({
+      id: crypto.randomUUID(),
+      tenantId,
+      memberId: member.id,
+      amount: -creditsRequired,
+      type: "deduction",
+      reason: "Reserva (creada por staff)",
+      bookingId: id,
+      createdBy: user.id,
+    });
+
+    // Queue notification
+    await c.env.NOTIFICATIONS_QUEUE.send({
+      type: "booking_confirmed",
+      tenantId,
+      bookingId: id,
+      memberId: member.id,
+    });
+
+    const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
+    return c.json({ data: booking }, 201);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return c.json({ error: "Validation error", details: err.errors.map(e => e.message) }, 400);
+    }
+    throw err;
   }
-
-  const id = crypto.randomUUID();
-
-  await db.insert(schema.bookings).values({
-    id,
-    tenantId,
-    memberId: member.id,
-    courtId: body.courtId,
-    startTime: body.startTime,
-    endTime: body.endTime,
-    creditsDeducted: creditsRequired,
-    status: "confirmed",
-  });
-
-  // Deduct credits
-  await db
-    .update(schema.members)
-    .set({ creditBalance: member.creditBalance - creditsRequired })
-    .where(eq(schema.members.id, member.id));
-
-  // Log transaction
-  await db.insert(schema.creditTransactions).values({
-    id: crypto.randomUUID(),
-    tenantId,
-    memberId: member.id,
-    amount: -creditsRequired,
-    type: "deduction",
-    reason: "Reserva (creada por staff)",
-    bookingId: id,
-    createdBy: user.id,
-  });
-
-  // Queue notification
-  await c.env.NOTIFICATIONS_QUEUE.send({
-    type: "booking_confirmed",
-    tenantId,
-    bookingId: id,
-    memberId: member.id,
-  });
-
-  const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
-  return c.json({ data: booking }, 201);
 });
 
 // ── PUT /bookings/:id/status — staff updates booking status ─────────────────
 
 bookings.put("/:id/status", requireRole("super_admin", "staff"), async (c) => {
-  const db = createDb(c.env.DB);
-  const tenantId = c.get("tenantId")!;
-  const user = c.get("user");
-  const { id } = c.req.param();
-  const body = await c.req.json<{ status: "completed" | "no_show" | "cancelled" }>();
+  try {
+    const body = updateBookingStatusSchema.parse(await c.req.json());
+    const db = createDb(c.env.DB);
+    const tenantId = c.get("tenantId")!;
+    const user = c.get("user");
+    const { id } = c.req.param();
 
-  const booking = await db.query.bookings.findFirst({
-    where: and(eq(schema.bookings.id, id), eq(schema.bookings.tenantId, tenantId)),
-  });
-  if (!booking) return c.json({ error: "Booking not found" }, 404);
-
-  if (booking.status !== "confirmed") {
-    return c.json({ error: "Only confirmed bookings can be updated" }, 400);
-  }
-
-  const updates: Record<string, unknown> = { status: body.status };
-  if (body.status === "cancelled") {
-    updates.cancelledAt = new Date().toISOString();
-  }
-
-  await db
-    .update(schema.bookings)
-    .set(updates)
-    .where(eq(schema.bookings.id, id));
-
-  // Refund credits when cancelling a confirmed booking
-  if (body.status === "cancelled") {
-    const member = await db.query.members.findFirst({
-      where: eq(schema.members.id, booking.memberId),
+    const booking = await db.query.bookings.findFirst({
+      where: and(eq(schema.bookings.id, id), eq(schema.bookings.tenantId, tenantId)),
     });
+    if (!booking) return c.json({ error: "Booking not found" }, 404);
 
-    if (member) {
-      await db
-        .update(schema.members)
-        .set({ creditBalance: member.creditBalance + booking.creditsDeducted })
-        .where(eq(schema.members.id, member.id));
-
-      await db.insert(schema.creditTransactions).values({
-        id: crypto.randomUUID(),
-        tenantId,
-        memberId: member.id,
-        amount: booking.creditsDeducted,
-        type: "adjustment",
-        reason: "Reembolso por cancelación (staff)",
-        bookingId: id,
-        createdBy: user.id,
-      });
-
-      // Queue cancellation notification
-      await c.env.NOTIFICATIONS_QUEUE.send({
-        type: "booking_cancelled",
-        tenantId,
-        bookingId: id,
-        memberId: member.id,
-      });
+    if (booking.status !== "confirmed") {
+      return c.json({ error: "Only confirmed bookings can be updated" }, 400);
     }
-  }
 
-  const updated = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
-  return c.json({ data: updated });
+    const updates: Record<string, unknown> = { status: body.status };
+    if (body.status === "cancelled") {
+      updates.cancelledAt = new Date().toISOString();
+    }
+
+    await db
+      .update(schema.bookings)
+      .set(updates)
+      .where(eq(schema.bookings.id, id));
+
+    // Refund credits when cancelling a confirmed booking
+    if (body.status === "cancelled") {
+      const member = await db.query.members.findFirst({
+        where: eq(schema.members.id, booking.memberId),
+      });
+
+      if (member) {
+        await db
+          .update(schema.members)
+          .set({ creditBalance: member.creditBalance + booking.creditsDeducted })
+          .where(eq(schema.members.id, member.id));
+
+        await db.insert(schema.creditTransactions).values({
+          id: crypto.randomUUID(),
+          tenantId,
+          memberId: member.id,
+          amount: booking.creditsDeducted,
+          type: "adjustment",
+          reason: "Reembolso por cancelación (staff)",
+          bookingId: id,
+          createdBy: user.id,
+        });
+
+        // Queue cancellation notification
+        await c.env.NOTIFICATIONS_QUEUE.send({
+          type: "booking_cancelled",
+          tenantId,
+          bookingId: id,
+          memberId: member.id,
+        });
+      }
+    }
+
+    const updated = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
+    return c.json({ data: updated });
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return c.json({ error: "Validation error", details: err.errors.map(e => e.message) }, 400);
+    }
+    throw err;
+  }
 });
 
 // ── DELETE /bookings/:id — member cancels own booking with credit refund ────

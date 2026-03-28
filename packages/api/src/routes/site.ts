@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
 import type { Bindings, Variables } from "../types";
 import { createDb, schema } from "../db";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import { updateBrandingSchema } from "../lib/validation";
 
 const site = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -36,12 +38,14 @@ site.put("/config", authMiddleware, requireRole("super_admin"), async (c) => {
   if (!tenantId) return c.json({ error: "Tenant not found" }, 404);
 
   const db = createDb(c.env.DB);
-  const body = await c.req.json<{
-    clubName?: string; primaryColor?: string; logoUrl?: string;
-    heroTitle?: string; heroSubtitle?: string;
-    address?: string; phone?: string; instagram?: string; hours?: string;
-    photos?: string[];
-  }>();
+
+  let body;
+  try {
+    body = updateBrandingSchema.parse(await c.req.json());
+  } catch (e) {
+    if (e instanceof ZodError) return c.json({ error: e.issues }, 400);
+    throw e;
+  }
 
   const updates: Record<string, unknown> = {};
   if (body.clubName !== undefined) updates.clubName = body.clubName;

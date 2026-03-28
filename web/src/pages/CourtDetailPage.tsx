@@ -53,7 +53,25 @@ export default function CourtDetailPage() {
   const [forceBlock, setForceBlock] = useState(false);
 
   const maybeCourt = courts.find((c) => c.id === id);
-  if (!maybeCourt) {
+  const court: Court | undefined = maybeCourt;
+  const v = court ? getCurrentVersion(court) : { name: "", sport: "padel", type: "indoor", surface: "", capacity: 4, priceMultiplier: 1 };
+  const courtSchedules = court ? schedules.filter((s) => s.courtId === court.id).sort((a, b) => a.dayOfWeek - b.dayOfWeek) : [];
+  const courtBlocks = court ? blocks.filter((b) => b.courtId === court.id) : [];
+  const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+
+  // ── Edit form (must be declared before any early return) ──────────────────
+  const [form, setForm] = useState<CourtFormData>({
+    name: v.name,
+    sport: v.sport as CourtSport,
+    type: v.type,
+    surface: v.surface,
+    capacity: v.capacity,
+    priceMultiplier: v.priceMultiplier,
+    sedeId: court?.sedeId ?? "",
+    reason: "",
+  });
+
+  if (!court) {
     return (
       <div className="space-y-4">
         <Link to="/courts" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium">
@@ -65,24 +83,6 @@ export default function CourtDetailPage() {
       </div>
     );
   }
-
-  const court: Court = maybeCourt;
-  const v = getCurrentVersion(court);
-  const courtSchedules = schedules.filter((s) => s.courtId === court.id).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
-  const courtBlocks = blocks.filter((b) => b.courtId === court.id);
-  const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
-
-  // ── Edit form ────────────────────────────────────────────────────────────
-  const [form, setForm] = useState<CourtFormData>({
-    name: v.name,
-    sport: v.sport as CourtSport,
-    type: v.type,
-    surface: v.surface,
-    capacity: v.capacity,
-    priceMultiplier: v.priceMultiplier,
-    sedeId: court.sedeId ?? "",
-    reason: "",
-  });
 
   function openEdit() {
     setForm({

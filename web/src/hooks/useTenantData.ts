@@ -169,6 +169,21 @@ function adaptCourt(apiCourt: Record<string, unknown>): Court {
   };
 }
 
+// ── Module-level cache (survives page navigations, not full reloads) ────────
+
+interface CacheEntry {
+  tenantId: string | null;
+  data: Omit<TenantData, "refetch">;
+  fetchedAt: number;
+}
+
+let _cache: CacheEntry | null = null;
+const CACHE_TTL = 30_000; // 30 seconds
+let _fetchPromise: Promise<void> | null = null;
+const _listeners = new Set<() => void>();
+
+function notifyListeners() { _listeners.forEach((fn) => fn()); }
+
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function useTenantData(): TenantData {
@@ -177,7 +192,7 @@ export function useTenantData(): TenantData {
   const isPlatform = useAuthStore((s) => s.user?.role === "platform_admin");
   const setBranding = useBrandingStore((s) => s.setBranding);
 
-  const [data, setData] = useState<Omit<TenantData, "refetch">>({
+  const emptyData: Omit<TenantData, "refetch"> = {
     sedes: [], courts: [], courtSchedules: [], courtBlocks: [],
     members: [], clubUsers: [], creditPrices: [],
     bookings: [], transactions: [],
@@ -185,18 +200,51 @@ export function useTenantData(): TenantData {
     availabilityConfig: null, specialDays: [],
     tenantId, hasMultipleSedes: false,
     loading: true, error: null,
-  });
+  };
 
-  const fetchData = useCallback(async () => {
+  // Use cached data if available and fresh for this tenant
+  const cachedValid = _cache && _cache.tenantId === tenantId && (Date.now() - _cache.fetchedAt < CACHE_TTL);
+  const [data, setData] = useState<Omit<TenantData, "refetch">>(
+    cachedValid ? _cache!.data : emptyData
+  );
+
+  // Subscribe to cache updates from other components
+  useEffect(() => {
+    const listener = () => {
+      if (_cache && _cache.tenantId === tenantId) {
+        setData(_cache.data);
+      }
+    };
+    _listeners.add(listener);
+    return () => { _listeners.delete(listener); };
+  }, [tenantId]);
+
+  const fetchData = useCallback(async (force = false) => {
     if (!token) return;
     if (isPlatform && !tenantId) {
-      // Platform admin without impersonation — no tenant data
-      setData((prev) => ({ ...prev, loading: false, tenantId: null }));
+      const d = { ...emptyData, loading: false, tenantId: null };
+      _cache = { tenantId: null, data: d, fetchedAt: Date.now() };
+      setData(d);
+      notifyListeners();
+      return;
+    }
+
+    // If cache is fresh and not forced, skip
+    if (!force && _cache && _cache.tenantId === tenantId && (Date.now() - _cache.fetchedAt < CACHE_TTL)) {
+      setData(_cache.data);
+      return;
+    }
+
+    // Deduplicate concurrent fetches
+    if (_fetchPromise && !force) {
+      await _fetchPromise;
+      if (_cache && _cache.tenantId === tenantId) setData(_cache.data);
       return;
     }
 
     setData((prev) => ({ ...prev, loading: true, error: null }));
 
+    const doFetch = async () => {
     try {
       // Fetch all endpoints in parallel
       const [courtsRes, sedesRes, bookingsRes, membersRes, schedulesData, blocksData, siteRes] = await Promise.all([
@@ -280,7 +328,7 @@ export function useTenantData(): TenantData {
 
       const sedes = sedesRes.data;
 
-      setData({
+      const result = {
         sedes,
         courts,
         courtSchedules: allSchedules,
@@ -299,7 +347,11 @@ export function useTenantData(): TenantData {
         hasMultipleSedes: sedes.length > 1,
         loading: false,
         error: null,
-      });
+      } as Omit<TenantData, "refetch">;
+
+      _cache = { tenantId, data: result, fetchedAt: Date.now() };
+      setData(result);
+      notifyListeners();
     } catch (err) {
       setData((prev) => ({
         ...prev,
@@ -307,11 +359,17 @@ export function useTenantData(): TenantData {
         error: err instanceof Error ? err.message : "Error cargando datos",
       }));
     }
+    }; // end doFetch
+
+    _fetchPromise = doFetch().finally(() => { _fetchPromise = null; });
   }, [token, tenantId, isPlatform, setBranding]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { ...data, refetch: fetchData };
+  // refetch forces cache invalidation
+  const refetch = useCallback(() => fetchData(true), [fetchData]);
+
+  return { ...data, refetch };
 }

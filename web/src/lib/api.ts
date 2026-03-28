@@ -1,24 +1,46 @@
 /**
  * API client for CanchaPro backend
- *
- * Usage:
- *   import { api } from "@/lib/api";
- *   const { data } = await api.get("/v1/courts");
- *   const { data } = await api.post("/v1/bookings", { courtId, startTime, endTime });
+ * Singleton with lazy token resolution from Zustand persisted store.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
-class ApiClient {
-  private token: string | null = null;
-  private tenantId: string | null = null;
+function getAuthFromStorage(): { token: string | null; tenantId: string | null } {
+  try {
+    const raw = localStorage.getItem("canchapro-auth");
+    if (!raw) return { token: null, tenantId: null };
+    const parsed = JSON.parse(raw);
+    return {
+      token: parsed?.state?.token ?? null,
+      tenantId: parsed?.state?.tenantId ?? null,
+    };
+  } catch {
+    return { token: null, tenantId: null };
+  }
+}
 
-  setToken(token: string | null) {
-    this.token = token;
+class ApiClient {
+  private _token: string | null = null;
+  private _tenantId: string | null = null;
+
+  setToken(token: string | null) { this._token = token; }
+  setTenantId(tenantId: string | null) { this._tenantId = tenantId; }
+
+  private getToken(): string | null {
+    if (this._token) return this._token;
+    // Fallback: read from localStorage if Zustand hasn't rehydrated yet
+    const stored = getAuthFromStorage();
+    if (stored.token) {
+      this._token = stored.token;
+      this._tenantId = stored.tenantId;
+    }
+    return this._token;
   }
 
-  setTenantId(tenantId: string | null) {
-    this.tenantId = tenantId;
+  private getTenantId(): string | null {
+    if (this._tenantId) return this._tenantId;
+    const stored = getAuthFromStorage();
+    return stored.tenantId;
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -26,13 +48,11 @@ class ApiClient {
       "Content-Type": "application/json",
     };
 
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
-    }
+    const token = this.getToken();
+    const tenantId = this.getTenantId();
 
-    if (this.tenantId) {
-      headers["x-tenant-id"] = this.tenantId;
-    }
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (tenantId) headers["x-tenant-id"] = tenantId;
 
     const res = await fetch(`${API_BASE}${path}`, {
       method,
@@ -41,8 +61,7 @@ class ApiClient {
     });
 
     if (res.status === 401) {
-      // Token expired — clear auth and redirect
-      this.token = null;
+      this._token = null;
       window.location.href = "/login";
       throw new Error("Unauthorized");
     }
@@ -56,26 +75,17 @@ class ApiClient {
     return json;
   }
 
-  get<T>(path: string) {
-    return this.request<T>("GET", path);
-  }
-
-  post<T>(path: string, body?: unknown) {
-    return this.request<T>("POST", path, body);
-  }
-
-  put<T>(path: string, body?: unknown) {
-    return this.request<T>("PUT", path, body);
-  }
-
-  delete<T>(path: string) {
-    return this.request<T>("DELETE", path);
-  }
+  get<T>(path: string) { return this.request<T>("GET", path); }
+  post<T>(path: string, body?: unknown) { return this.request<T>("POST", path, body); }
+  put<T>(path: string, body?: unknown) { return this.request<T>("PUT", path, body); }
+  delete<T>(path: string) { return this.request<T>("DELETE", path); }
 
   async upload(path: string, file: File): Promise<{ data: { key: string; url: string } }> {
     const headers: Record<string, string> = {};
-    if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
-    if (this.tenantId) headers["x-tenant-id"] = this.tenantId;
+    const token = this.getToken();
+    const tenantId = this.getTenantId();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (tenantId) headers["x-tenant-id"] = tenantId;
 
     const formData = new FormData();
     formData.append("file", file);

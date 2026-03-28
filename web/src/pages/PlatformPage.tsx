@@ -95,16 +95,16 @@ export default function PlatformPage() {
   const filtered = tenants.filter(
     (t) =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.city.toLowerCase().includes(search.toLowerCase())
+      (t.city ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   // ── KPIs ─────────────────────────────────────────────────────────────────────
 
   const activeTenants = tenants.filter((t) => t.status !== "suspended");
   const activeCount = activeTenants.filter((t) => t.status === "active").length;
-  const totalMembers = tenants.reduce((s, t) => s + t.members, 0);
-  const totalCourts = tenants.reduce((s, t) => s + t.courts, 0);
-  const totalEstReservations = activeTenants.reduce((s, t) => s + Math.round(t.courts * 16 * 0.6 * 30), 0);
+  const totalMembers = tenants.reduce((s, t) => s + (t.members ?? 0), 0);
+  const totalCourts = tenants.reduce((s, t) => s + (t.courts ?? 0), 0);
+  const totalEstReservations = activeTenants.reduce((s, t) => s + Math.round((t.courts ?? 0) * 16 * 0.6 * 30), 0);
   const mrr = activeTenants.length * 99 + totalEstReservations * 0.5;
 
   const kpis = [

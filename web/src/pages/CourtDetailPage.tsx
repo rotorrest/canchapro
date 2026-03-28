@@ -71,6 +71,21 @@ export default function CourtDetailPage() {
     reason: "",
   });
 
+  // ── Block conflict detection (hook — must be before early return) ─────────
+  const blockConflicts = useMemo(() => {
+    if (!blockForm.date || !court) return [];
+    return td.bookings.filter((b) => {
+      if (b.courtId !== court.id || b.status !== "confirmed") return false;
+      const bookingDate = b.startTime.split("T")[0];
+      if (bookingDate !== blockForm.date) return false;
+      if (!blockForm.startTime && !blockForm.endTime) return true;
+      const bStart = b.startTime.split("T")[1]?.substring(0, 5) ?? "";
+      const bEnd = b.endTime.split("T")[1]?.substring(0, 5) ?? "";
+      if (blockForm.startTime && blockForm.endTime) return bStart < blockForm.endTime && bEnd > blockForm.startTime;
+      return false;
+    });
+  }, [blockForm.date, blockForm.startTime, blockForm.endTime, court, td.bookings]);
+
   if (!court) {
     return (
       <div className="space-y-4">
@@ -134,21 +149,6 @@ export default function CourtDetailPage() {
     await api.post(`/v1/courts/${court.id}/schedule`, { ...schedule, [field]: value });
     td.refetch();
   }
-
-  // ── Block conflict detection ─────────────────────────────────────────────
-  const blockConflicts = useMemo(() => {
-    if (!blockForm.date) return [];
-    return td.bookings.filter((b) => {
-      if (b.courtId !== court.id || b.status !== "confirmed") return false;
-      const bookingDate = b.startTime.split("T")[0];
-      if (bookingDate !== blockForm.date) return false;
-      if (!blockForm.startTime && !blockForm.endTime) return true;
-      const bStart = b.startTime.split("T")[1]?.substring(0, 5) ?? "";
-      const bEnd = b.endTime.split("T")[1]?.substring(0, 5) ?? "";
-      if (blockForm.startTime && blockForm.endTime) return bStart < blockForm.endTime && bEnd > blockForm.startTime;
-      return false;
-    });
-  }, [blockForm.date, blockForm.startTime, blockForm.endTime]);
 
   const hasConflicts = blockConflicts.length > 0;
 

@@ -30,6 +30,11 @@ output "kv_cache_id" {
   description = "CACHE_KV namespace ID -> wrangler.toml [[kv_namespaces]] id"
 }
 
+output "kv_site_id" {
+  value       = cloudflare_workers_kv_namespace.site.id
+  description = "SITE_KV namespace ID -> wrangler.toml [[kv_namespaces]] id (site builder pre-rendered HTML)"
+}
+
 # ── R2 ───────────────────────────────────────────────────────────────────────
 
 output "r2_bucket_name" {
@@ -118,6 +123,7 @@ output "wrangler_bindings_summary" {
       database_id        = "${cloudflare_d1_database.main.id}"
       TENANT_KV id       = "${cloudflare_workers_kv_namespace.tenant.id}"
       CACHE_KV id        = "${cloudflare_workers_kv_namespace.cache.id}"
+      SITE_KV id         = "${cloudflare_workers_kv_namespace.site.id}"
       bucket_name        = "${cloudflare_r2_bucket.uploads.name}"
       queue              = "${cloudflare_queue.notifications.name}"
       dead_letter_queue  = "${cloudflare_queue.notifications_dlq.name}"
@@ -128,6 +134,7 @@ output "wrangler_bindings_summary" {
 
     packages/club-site/wrangler.toml:
       TENANT_KV id       = "${cloudflare_workers_kv_namespace.tenant.id}"
+      SITE_KV id         = "${cloudflare_workers_kv_namespace.site.id}"
       bucket_name        = "${cloudflare_r2_bucket.uploads.name}"
 
   EOT

@@ -123,8 +123,8 @@ export default function ReportsPage() {
     ];
     const rows = filteredBookings.map((b) => [
       formatDateES(b.startTime),
-      b.memberName,
-      b.courtName,
+      b.memberName ?? "",
+      b.courtName ?? "",
       `${format(parseISO(b.startTime), "HH:mm")} - ${format(parseISO(b.endTime), "HH:mm")}`,
       formatAmount(b.creditsDeducted, 0),
       getStatusLabel(b.status),

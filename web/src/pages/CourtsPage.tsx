@@ -53,6 +53,7 @@ export default function CourtsPage() {
   const [blockForm, setBlockForm] = useState({ courtId: "", date: "", startTime: "", endTime: "", reason: "" });
   const [deactivateModal, setDeactivateModal] = useState<{ courtId: string; courtName: string } | null>(null);
   const [deactivateReason, setDeactivateReason] = useState("");
+  const [forceBlock, setForceBlock] = useState(false);
 
   // ── Open modal for new court ───────────────────────────────────────────────
   function openAdd() {
@@ -131,7 +132,6 @@ export default function CourtsPage() {
   }, [blockForm.courtId, blockForm.date, blockForm.startTime, blockForm.endTime]);
 
   const hasConflicts = blockConflicts.length > 0;
-  const [forceBlock, setForceBlock] = useState(false);
 
   async function addBlock() {
     if (!blockForm.courtId || !blockForm.date) return;

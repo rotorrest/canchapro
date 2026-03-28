@@ -202,9 +202,6 @@ export default function LandingPage() {
       <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-brand-700 rounded-lg flex items-center justify-center">
-              <LogoIcon className="w-5 h-5 text-white" />
-            </div>
             <span className="font-bold text-lg text-gray-900">CanchaPro</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-600">
@@ -500,9 +497,6 @@ export default function LandingPage() {
       <footer className="border-t border-gray-100 py-10 px-5">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-brand-700 rounded-lg flex items-center justify-center">
-              <LogoIcon className="w-4 h-4 text-white" />
-            </div>
             <span className="font-bold text-gray-900">CanchaPro</span>
           </div>
           <div className="flex flex-wrap gap-6 text-sm text-gray-500">

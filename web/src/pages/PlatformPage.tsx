@@ -194,7 +194,7 @@ export default function PlatformPage() {
         {filtered.map((t) => {
           const details = tenantDetails.get(t.id);
           const isExpanded = expandedId === t.id;
-          const estReservations = t.status !== "suspended" ? Math.round(t.courts * 16 * 0.6 * 30) : 0;
+          const estReservations = t.status !== "suspended" ? Math.round((t.courts ?? 0) * 16 * 0.6 * 30) : 0;
           const fee = t.status !== "suspended" ? 99 + estReservations * 0.5 : 0;
 
           return (

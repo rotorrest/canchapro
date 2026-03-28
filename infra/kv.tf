@@ -15,3 +15,11 @@ resource "cloudflare_workers_kv_namespace" "cache" {
   account_id = var.cloudflare_account_id
   title      = "canchapro-cache-kv-${var.environment}"
 }
+
+# Site builder: pre-rendered HTML for club public websites.
+# Written by the API worker on publish, read by the club-site worker on every request.
+# Key pattern: site:{tenant_slug}:{page_slug}:html
+resource "cloudflare_workers_kv_namespace" "site" {
+  account_id = var.cloudflare_account_id
+  title      = "canchapro-site-kv-${var.environment}"
+}

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { MapPin, Plus, Trash2, Building2, AlertCircle, X } from "lucide-react";
 import { useTenantData } from "@/hooks/useTenantData";
-import type { Sede } from "@/hooks/useTenantData";
 import { api } from "@/lib/api";
 
 interface SedeForm {

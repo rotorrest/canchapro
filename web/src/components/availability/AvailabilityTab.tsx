@@ -580,7 +580,17 @@ function PreviewSection({ courts }: { courts: Court[] }) {
 
 export default function AvailabilityTab() {
   const td = useTenantData();
-  const [config, setConfig] = useState(td.availabilityConfig);
+  const [config, setConfig] = useState<AvailabilityConfig>(td.availabilityConfig ?? {
+    tenantId: td.tenantId ?? "",
+    defaultSlotDuration: 60,
+    minAdvanceMinutes: 60,
+    maxAdvanceDays: 7,
+    maxBookingsPerMemberPerDay: 2,
+    bufferMinutes: 0,
+    noShowToleranceMinutes: 15,
+    autoCancelNoShow: false,
+    bookingDeadlineTime: null,
+  });
 
   return (
     <div className="space-y-6">

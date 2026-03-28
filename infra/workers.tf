@@ -44,6 +44,12 @@ resource "cloudflare_worker_script" "api" {
     bucket_name = cloudflare_r2_bucket.uploads.name
   }
 
+  # ── Site KV binding (pre-rendered HTML for site builder) ──
+  kv_namespace_binding {
+    name         = "SITE_KV"
+    namespace_id = cloudflare_workers_kv_namespace.site.id
+  }
+
   # ── Queue producer binding ──
   queue_binding {
     binding = "NOTIFICATIONS_QUEUE"
@@ -56,7 +62,7 @@ resource "cloudflare_worker_script" "api" {
     max_batch_size    = 10
     max_batch_timeout = 30
     max_retries       = 3
-    dead_letter_queue = cloudflare_queue.dlq.name
+    dead_letter_queue = cloudflare_queue.notifications_dlq.name
   }
 
   # ── Environment variables ──
@@ -135,6 +141,12 @@ resource "cloudflare_worker_script" "club_site" {
   kv_namespace_binding {
     name         = "TENANT_KV"
     namespace_id = cloudflare_workers_kv_namespace.tenant.id
+  }
+
+  # Pre-rendered HTML for club public websites (site builder)
+  kv_namespace_binding {
+    name         = "SITE_KV"
+    namespace_id = cloudflare_workers_kv_namespace.site.id
   }
 
   r2_bucket_binding {

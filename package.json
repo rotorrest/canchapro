@@ -2,17 +2,20 @@
   "name": "canchapro",
   "private": true,
   "scripts": {
+    "dev": "turbo run dev --filter=@canchapro/api --filter=ica-padel-web --parallel",
     "dev:api": "turbo run dev --filter=@canchapro/api",
-    "dev:web": "turbo run dev --filter=@canchapro/web",
-    "dev:landing": "turbo run dev --filter=@canchapro/landing",
-    "dev:admin": "turbo run dev --filter=@canchapro/admin",
+    "dev:web": "turbo run dev --filter=ica-padel-web",
+    "dev:landing": "cd landing && npm run dev",
     "dev:router": "turbo run dev --filter=@canchapro/router",
     "dev:club-site": "turbo run dev --filter=@canchapro/club-site",
     "build": "turbo run build",
     "deploy": "turbo run deploy",
     "typecheck": "turbo run typecheck",
-    "db:generate": "turbo run db:generate --filter=@canchapro/api",
-    "db:migrate": "turbo run db:migrate --filter=@canchapro/api"
+    "db:create": "cd packages/api && wrangler d1 create canchapro-db",
+    "db:migrate": "cd packages/api && wrangler d1 migrations apply canchapro-db --local",
+    "db:seed": "cd packages/api && wrangler d1 execute canchapro-db --local --file=migrations/0002_seed.sql",
+    "db:reset": "cd packages/api && rm -rf .wrangler/state && pnpm run db:migrate && pnpm run db:seed",
+    "setup": "pnpm install && bash packages/api/scripts/setup-local.sh"
   },
   "devDependencies": {
     "turbo": "^2.3.0"

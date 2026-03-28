@@ -36,18 +36,6 @@ resource "cloudflare_record" "app" {
   comment = "Web dashboard (Pages)"
 }
 
-# ── admin.canchapro.com ── points to the admin panel (Pages project)
-resource "cloudflare_record" "admin" {
-  count   = local.manage_dns ? 1 : 0
-  zone_id = var.cloudflare_zone_id
-  name    = "admin"
-  content = cloudflare_pages_project.admin.subdomain
-  type    = "CNAME"
-  proxied = true
-  ttl     = 1
-  comment = "Admin panel (Pages)"
-}
-
 # ── *.canchapro.com ── wildcard for tenant subdomains, points to Router Worker
 resource "cloudflare_record" "wildcard" {
   count   = local.manage_dns ? 1 : 0

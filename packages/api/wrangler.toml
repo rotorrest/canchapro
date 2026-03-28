@@ -39,7 +39,7 @@ queue = "canchapro-notifications"
 # Set secrets: wrangler secret put JWT_SECRET --env production
 
 [env.production]
-vars = { ENVIRONMENT = "production" }
+vars = { ENVIRONMENT = "production", DOMAIN = "canchapro.com" }
 
 [[env.production.d1_databases]]
 binding = "DB"

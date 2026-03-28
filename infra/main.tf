@@ -13,7 +13,9 @@
 #   - Workers (API, router, club-site)
 #   - DNS records (api, app, wildcard for tenant subdomains)
 #   - Cloudflare for SaaS (custom hostname support for tenant domains)
-#   - Pages projects (web dashboard, landing site, admin panel)
+#   - Pages projects (web dashboard, landing site)
+#   - Security (WAF rate limiting rules)
+#   - Monitoring (health checks)
 #
 # Setup:
 #   1. Copy terraform.tfvars.example to terraform.tfvars

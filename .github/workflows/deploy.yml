@@ -1,0 +1,105 @@
+name: Deploy CanchaPro
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+jobs:
+  # ── Type check ─────────────────────────────────────────────────────────────
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: cd web && npx tsc --noEmit --skipLibCheck
+
+  # ── Deploy API Worker ──────────────────────────────────────────────────────
+  deploy-api:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy API
+        run: cd packages/api && npx wrangler deploy --env production
+      - name: Run migrations
+        run: cd packages/api && npx wrangler d1 migrations apply canchapro-db --remote --env production
+
+  # ── Deploy Router Worker ───────────────────────────────────────────────────
+  deploy-router:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy Router
+        run: cd packages/router && npx wrangler deploy --env production
+
+  # ── Deploy Club-Site Worker ────────────────────────────────────────────────
+  deploy-club-site:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy Club-Site
+        run: cd packages/club-site && npx wrangler deploy --env production
+
+  # ── Deploy Web SPA ─────────────────────────────────────────────────────────
+  deploy-web:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build Web
+        run: cd web && npx vite build
+        env:
+          VITE_API_URL: https://api.canchapro.com
+      - name: Deploy to Pages
+        run: cd web && npx wrangler pages deploy dist --project-name=canchapro-web-production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ── Deploy Landing ─────────────────────────────────────────────────────────
+  deploy-landing:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build Landing
+        run: cd landing && npm run build
+      - name: Deploy to Pages
+        run: cd landing && npx wrangler pages deploy out --project-name=canchapro-landing-production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

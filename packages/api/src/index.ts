@@ -19,9 +19,23 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 // Global middleware
 app.use("/*", logger());
 app.use("/*", cors({
-  origin: (origin) => origin, // Allow all origins in dev, restrict in prod
+  origin: (origin, c) => {
+    const env = c.env?.ENVIRONMENT ?? "development";
+    if (env === "development") return origin; // Allow all in dev
+    const allowed = [
+      `https://app.${c.env?.DOMAIN ?? "canchapro.com"}`,
+      `https://${c.env?.DOMAIN ?? "canchapro.com"}`,
+      `https://admin.${c.env?.DOMAIN ?? "canchapro.com"}`,
+    ];
+    // Allow tenant subdomains and custom domains
+    if (origin && (allowed.includes(origin) || origin.endsWith(`.${c.env?.DOMAIN ?? "canchapro.com"}`))) {
+      return origin;
+    }
+    return allowed[0]; // Fallback to app subdomain
+  },
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "x-tenant-id"],
+  maxAge: 86400,
 }));
 app.use("/*", tenantMiddleware);
 

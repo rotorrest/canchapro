@@ -9,6 +9,7 @@ export interface Bindings {
   NOTIFICATIONS_QUEUE: Queue;
   JWT_SECRET: string;
   ENVIRONMENT: string;
+  DOMAIN: string;
 }
 
 export interface Variables {

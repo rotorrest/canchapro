@@ -14,9 +14,9 @@ resource "cloudflare_pages_project" "web" {
   production_branch = "main"
 
   build_config {
-    build_command   = "npm run build"
-    destination_dir = "dist"
-    root_dir        = "packages/web"
+    build_command   = "cd web && pnpm install && pnpm run build"
+    destination_dir = "web/dist"
+    root_dir        = ""
   }
 
   deployment_configs {
@@ -42,9 +42,9 @@ resource "cloudflare_pages_project" "landing" {
   production_branch = "main"
 
   build_config {
-    build_command   = "npm run build"
-    destination_dir = "out"
-    root_dir        = "packages/landing"
+    build_command   = "cd landing && pnpm install && pnpm run build"
+    destination_dir = "landing/out"
+    root_dir        = ""
   }
 
   deployment_configs {
@@ -56,34 +56,6 @@ resource "cloudflare_pages_project" "landing" {
     preview {
       environment_variables = {
         NEXT_PUBLIC_API_URL = "https://api.${var.domain}"
-      }
-    }
-  }
-}
-
-# ── Admin Panel (Lumini internal super-admin) ────────────────────────────────
-resource "cloudflare_pages_project" "admin" {
-  account_id        = var.cloudflare_account_id
-  name              = "canchapro-admin-${var.environment}"
-  production_branch = "main"
-
-  build_config {
-    build_command   = "npm run build"
-    destination_dir = "dist"
-    root_dir        = "packages/admin"
-  }
-
-  deployment_configs {
-    production {
-      environment_variables = {
-        VITE_API_URL     = "https://api.${var.domain}"
-        VITE_ENVIRONMENT = var.environment
-      }
-    }
-    preview {
-      environment_variables = {
-        VITE_API_URL     = "https://api.${var.domain}"
-        VITE_ENVIRONMENT = "preview"
       }
     }
   }
@@ -105,9 +77,3 @@ resource "cloudflare_pages_domain" "landing_root" {
   domain       = var.domain
 }
 
-resource "cloudflare_pages_domain" "admin_panel" {
-  count        = local.manage_dns ? 1 : 0
-  account_id   = var.cloudflare_account_id
-  project_name = cloudflare_pages_project.admin.name
-  domain       = "admin.${var.domain}"
-}

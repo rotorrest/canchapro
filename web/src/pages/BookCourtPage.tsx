@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTenantData } from "@/hooks/useTenantData";
 import { useSedeStore } from "@/store/sedeStore";
 import { Link } from "react-router-dom";
-import { CalendarDays, CheckCircle, ChevronLeft, ChevronRight, MapPin, Clock } from "lucide-react";
+import { CalendarDays, CheckCircle, MapPin, Clock, Filter } from "lucide-react";
 import PadelIcon from "@/components/PadelIcon";
 import SedeSelector from "@/components/SedeSelector";
 
@@ -20,7 +20,7 @@ interface TimeSlot {
   durationMinutes?: number;
 }
 
-interface CourtAvailability {
+interface CourtSlots {
   courtId: string;
   courtName: string;
   courtType: string;
@@ -28,7 +28,7 @@ interface CourtAvailability {
   sedeId: string | null;
   sedeName: string | null;
   priceMultiplier: number;
-  slot: TimeSlot;
+  slots: TimeSlot[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,7 +44,6 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-// Generate the next N days starting from today
 function getUpcomingDays(count: number): Date[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -53,17 +52,6 @@ function getUpcomingDays(count: number): Date[] {
     d.setDate(d.getDate() + i);
     return d;
   });
-}
-
-// Generate hour options (e.g., 6:00, 6:30, 7:00...) for a range
-function generateHourOptions(startHour: number, endHour: number, stepMinutes: number): string[] {
-  const options: string[] = [];
-  for (let min = startHour * 60; min < endHour * 60; min += stepMinutes) {
-    const h = Math.floor(min / 60);
-    const m = min % 60;
-    options.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-  }
-  return options;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -75,13 +63,35 @@ export default function BookCourtPage() {
 
   const [member, setMember] = useState<Member | null>(null);
   const [memberLoading, setMemberLoading] = useState(true);
+  const [creditBalance, setCreditBalance] = useState(0);
 
-  // Fetch current member from API
+  // ── Filters ─────────────────────────────────────────────────────────────────
+
+  const [selectedSport, setSelectedSport] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedHour, setSelectedHour] = useState<string | null>(null);
+
+  // ── Availability data (fetched per sport+date change) ──────────────────────
+
+  const [courtSlots, setCourtSlots] = useState<CourtSlots[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+
+  // ── Booking state ──────────────────────────────────────────────────────────
+
+  const [confirming, setConfirming] = useState<string | null>(null); // courtId
+  const [booked, setBooked] = useState<{ courtName: string; time: string; cost: number } | null>(null);
+  const [bookingInProgress, setBookingInProgress] = useState(false);
+
+  const upcomingDays = useMemo(() => getUpcomingDays(14), []);
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+
+  // ── Fetch member ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!user) { setMemberLoading(false); return; }
     let cancelled = false;
     api.get<{ data: Member }>("/v1/members/me").then((res) => {
-      if (!cancelled) setMember(res.data);
+      if (!cancelled) { setMember(res.data); setCreditBalance(res.data.creditBalance); }
     }).catch(() => {
       if (!cancelled) setMember(null);
     }).finally(() => {
@@ -90,162 +100,168 @@ export default function BookCourtPage() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Auto-select first sede
-  useEffect(() => {
-    if (td.hasMultipleSedes && !selectedSede && td.sedes.length > 0) {
-      setSelectedSede(td.sedes[0].id);
-    }
-  }, [td.hasMultipleSedes, td.sedes, selectedSede, setSelectedSede]);
+  // ── Derived: courts filtered by sede ──────────────────────────────────────
 
-  // ── Derived data ────────────────────────────────────────────────────────────
+  const activeCourts = useMemo(
+    () => td.courts.filter((c) => c.isActive && (!selectedSede || c.sedeId === selectedSede)),
+    [td.courts, selectedSede]
+  );
 
-  const activeCourts = td.courts.filter((c) => c.isActive && (!selectedSede || c.sedeId === selectedSede));
+  // ── Derived: available sports with court counts ───────────────────────────
 
-  // Available sports from active courts
-  const sports = useMemo(() => {
-    const set = new Set<string>();
+  const sportsWithCounts = useMemo(() => {
+    const map = new Map<string, number>();
     for (const c of activeCourts) {
       const v = getCurrentVersion(c);
-      set.add(v.sport as string);
+      const sport = v.sport as string;
+      map.set(sport, (map.get(sport) ?? 0) + 1);
     }
-    return Array.from(set);
+    return Array.from(map.entries()).map(([sport, count]) => ({ sport, count }));
   }, [activeCourts]);
 
-  // Duration options from schedule config
-  const durationOptions = useMemo(() => {
-    const config = td.availabilityConfig;
-    if (config && typeof config === "object" && "minBookingDurationMinutes" in config) {
-      const min = (config as { minBookingDurationMinutes: number }).minBookingDurationMinutes;
-      // Offer the minimum and common multiples
-      const opts = new Set([min]);
-      if (min <= 60) opts.add(60);
-      if (min <= 60) opts.add(90);
-      if (min <= 30) opts.add(120);
-      return Array.from(opts).sort((a, b) => a - b);
-    }
-    return [60, 90];
-  }, [td.availabilityConfig]);
-
-  // ── State ───────────────────────────────────────────────────────────────────
-
-  const [creditBalance, setCreditBalance] = useState(0);
-  const [selectedSport, setSelectedSport] = useState(sports[0] ?? "padel");
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [selectedDuration, setSelectedDuration] = useState(durationOptions[0] ?? 60);
-  const [selectedHour, setSelectedHour] = useState<string | null>(null);
-  const [step, setStep] = useState<"select" | "results">("select");
-
-  // Results state
-  const [results, setResults] = useState<CourtAvailability[]>([]);
-  const [resultsLoading, setResultsLoading] = useState(false);
-  const [confirming, setConfirming] = useState<CourtAvailability | null>(null);
-  const [booked, setBooked] = useState<CourtAvailability | null>(null);
-  const [bookingInProgress, setBookingInProgress] = useState(false);
-
-  const upcomingDays = useMemo(() => getUpcomingDays(14), []);
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-
-  // Available start hours (6:00–21:00 with 30min step, filter past hours for today)
-  const hourOptions = useMemo(() => {
-    const all = generateHourOptions(6, 22, 30);
-    if (isSameDay(selectedDate, today)) {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return all.filter((h) => {
-        const [hh, mm] = h.split(":").map(Number);
-        return hh * 60 + mm > currentMinutes;
-      });
-    }
-    return all;
-  }, [selectedDate, today]);
-
-  // Sync
-  useEffect(() => { if (member) setCreditBalance(member.creditBalance); }, [member]);
-  useEffect(() => { if (sports.length > 0 && !sports.includes(selectedSport)) setSelectedSport(sports[0]); }, [sports, selectedSport]);
-  useEffect(() => { if (!durationOptions.includes(selectedDuration)) setSelectedDuration(durationOptions[0]); }, [durationOptions, selectedDuration]);
-
-  // Auto-dismiss success
+  // Auto-select sport
   useEffect(() => {
-    if (!booked) return;
-    const timer = setTimeout(() => setBooked(null), 5000);
-    return () => clearTimeout(timer);
-  }, [booked]);
+    if (sportsWithCounts.length > 0) {
+      if (!selectedSport || !sportsWithCounts.find((s) => s.sport === selectedSport)) {
+        setSelectedSport(sportsWithCounts[0].sport);
+      }
+    }
+  }, [sportsWithCounts, selectedSport]);
 
-  // ── Search for available courts ─────────────────────────────────────────────
+  // ── Derived: courts for selected sport ────────────────────────────────────
 
-  async function searchAvailability() {
-    if (!selectedHour) return;
-    setResultsLoading(true);
-    setStep("results");
+  const courtsForSport = useMemo(
+    () => activeCourts.filter((c) => {
+      const v = getCurrentVersion(c);
+      return (v.sport as string) === selectedSport;
+    }),
+    [activeCourts, selectedSport]
+  );
+
+  // ── Fetch availability when sport or date changes ─────────────────────────
+
+  useEffect(() => {
+    if (!selectedSport || courtsForSport.length === 0) {
+      setCourtSlots([]);
+      return;
+    }
+
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSelectedHour(null);
     setConfirming(null);
 
-    try {
-      const dateStr = toDateStr(selectedDate);
-      // Fetch availability for all courts matching sport + sede, then filter client-side
-      const courtsForSport = activeCourts.filter((c) => {
-        const v = getCurrentVersion(c);
-        return (v.sport as string) === selectedSport;
-      });
+    const dateStr = toDateStr(selectedDate);
 
-      const availableResults: CourtAvailability[] = [];
-
-      for (const court of courtsForSport) {
+    Promise.all(
+      courtsForSport.map(async (court) => {
         try {
           const res = await api.get<{ data: TimeSlot[] }>(`/v1/courts/${court.id}/availability?date=${dateStr}`);
           const v = getCurrentVersion(court);
           const sede = court.sedeId ? td.sedes.find((s) => s.id === court.sedeId) : null;
-
-          // Find a slot matching the selected hour
-          const matchingSlot = res.data.find((s) => s.startTime === selectedHour && s.available);
-          if (matchingSlot) {
-            availableResults.push({
-              courtId: court.id,
-              courtName: v.name as string,
-              courtType: v.type as string,
-              sport: v.sport as string,
-              sedeId: court.sedeId,
-              sedeName: sede?.name ?? null,
-              priceMultiplier: (v as { priceMultiplier?: number }).priceMultiplier ?? 1,
-              slot: matchingSlot,
-            });
-          }
+          return {
+            courtId: court.id,
+            courtName: v.name as string,
+            courtType: v.type as string,
+            sport: v.sport as string,
+            sedeId: court.sedeId,
+            sedeName: sede?.name ?? null,
+            priceMultiplier: (v as { priceMultiplier?: number }).priceMultiplier ?? 1,
+            slots: res.data,
+          };
         } catch {
-          // Skip courts that error
+          return null;
+        }
+      })
+    ).then((results) => {
+      if (!cancelled) {
+        setCourtSlots(results.filter(Boolean) as CourtSlots[]);
+        setSlotsLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [selectedSport, selectedDate, courtsForSport.map((c) => c.id).join(",")]);
+
+  // ── Derived: available hours (at least 1 court has this hour available) ───
+
+  const hourAvailability = useMemo(() => {
+    const map = new Map<string, { available: boolean; courtCount: number; minPrice: number }>();
+
+    for (const cs of courtSlots) {
+      for (const slot of cs.slots) {
+        const existing = map.get(slot.startTime);
+        if (!existing) {
+          map.set(slot.startTime, {
+            available: slot.available,
+            courtCount: slot.available ? 1 : 0,
+            minPrice: slot.available ? (slot.creditsCost ?? 0) : Infinity,
+          });
+        } else {
+          if (slot.available) {
+            existing.available = true;
+            existing.courtCount++;
+            existing.minPrice = Math.min(existing.minPrice, slot.creditsCost ?? 0);
+          }
         }
       }
-
-      setResults(availableResults);
-    } catch {
-      setResults([]);
-    } finally {
-      setResultsLoading(false);
     }
-  }
 
-  // ── Book ────────────────────────────────────────────────────────────────────
+    return map;
+  }, [courtSlots]);
 
-  async function handleBook(result: CourtAvailability) {
+  const sortedHours = useMemo(
+    () => Array.from(hourAvailability.entries()).sort(([a], [b]) => a.localeCompare(b)),
+    [hourAvailability]
+  );
+
+  // ── Derived: courts available at selected hour ────────────────────────────
+
+  const availableCourts = useMemo(() => {
+    if (!selectedHour) return [];
+    return courtSlots
+      .map((cs) => {
+        const slot = cs.slots.find((s) => s.startTime === selectedHour && s.available);
+        if (!slot) return null;
+        return { ...cs, matchedSlot: slot };
+      })
+      .filter(Boolean) as (CourtSlots & { matchedSlot: TimeSlot })[];
+  }, [courtSlots, selectedHour]);
+
+  // ── Auto-dismiss booked ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!booked) return;
+    const t = setTimeout(() => setBooked(null), 5000);
+    return () => clearTimeout(t);
+  }, [booked]);
+
+  // ── Book ──────────────────────────────────────────────────────────────────
+
+  async function handleBook(court: CourtSlots & { matchedSlot: TimeSlot }) {
     if (bookingInProgress) return;
     setBookingInProgress(true);
     try {
       const dateStr = toDateStr(selectedDate);
       await api.post("/v1/bookings", {
-        courtId: result.courtId,
-        startTime: `${dateStr}T${result.slot.startTime}:00`,
-        endTime: `${dateStr}T${result.slot.endTime}:00`,
+        courtId: court.courtId,
+        startTime: `${dateStr}T${court.matchedSlot.startTime}:00`,
+        endTime: `${dateStr}T${court.matchedSlot.endTime}:00`,
       });
-      setCreditBalance((prev) => Math.max(0, prev - (result.slot.creditsCost ?? 0)));
-      setBooked(result);
+      const cost = court.matchedSlot.creditsCost ?? 0;
+      setCreditBalance((prev) => Math.max(0, prev - cost));
+      setBooked({ courtName: court.courtName, time: `${court.matchedSlot.startTime}–${court.matchedSlot.endTime}`, cost });
       setConfirming(null);
+      setSelectedHour(null);
       td.refetch();
     } catch {
-      // error handling
+      // error
     } finally {
       setBookingInProgress(false);
     }
   }
 
-  // ── Loading / Error states ──────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
 
   if (memberLoading || td.loading) {
     return (
@@ -266,268 +282,243 @@ export default function BookCourtPage() {
     );
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
-      {/* Header with balance */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reservar</h1>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Reservar</h1>
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2 text-right">
           <p className="text-lg font-bold text-blue-800">{creditBalance} <span className="text-xs font-medium">cr</span></p>
           <p className="text-[10px] text-blue-500">Saldo disponible</p>
         </div>
       </div>
 
-      {/* Success banner */}
+      {/* Success */}
       {booked && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3 animate-in fade-in-0 duration-300">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
             <div>
               <p className="text-sm font-medium text-emerald-800">Reserva confirmada</p>
-              <p className="text-xs text-emerald-600">
-                {booked.courtName} · {booked.slot.startTime}–{booked.slot.endTime} · {booked.slot.creditsCost} cr
-                {booked.sedeName && <> · <MapPin className="w-3 h-3 inline -mt-0.5" /> {booked.sedeName}</>}
-              </p>
+              <p className="text-xs text-emerald-600">{booked.courtName} · {booked.time} · {booked.cost} cr</p>
             </div>
           </div>
-          <Link
-            to="/my-bookings"
-            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
-          >
+          <Link to="/my-bookings" className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors shrink-0">
             <CalendarDays className="w-3.5 h-3.5" />
             Ver reservas
           </Link>
         </div>
       )}
 
-      {/* Sede selector */}
+      {/* Sede */}
       {td.hasMultipleSedes && (
         <SedeSelector
           sedes={td.sedes}
           selected={selectedSede}
-          onChange={(id) => {
-            setSelectedSede(id);
-            setStep("select");
-            setSelectedHour(null);
-          }}
+          onChange={(id) => { setSelectedSede(id); setSelectedHour(null); setConfirming(null); }}
         />
       )}
 
-      {/* ── STEP 1: Selection ──────────────────────────────────────────────── */}
-      {step === "select" && (
-        <>
-          {/* Sport selector */}
-          {sports.length > 1 && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Deporte</label>
-              <div className="flex gap-2 flex-wrap">
-                {sports.map((sport) => (
-                  <button
-                    key={sport}
-                    onClick={() => setSelectedSport(sport)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                      selectedSport === sport
-                        ? "border-blue-300 bg-blue-50 text-blue-900"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    <span>{getSportEmoji(sport)}</span>
-                    {getSportLabel(sport)}
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* ── FILTER 1: Sport ──────────────────────────────────────────────── */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <Filter className="w-3 h-3 inline -mt-0.5 mr-1" />
+          Deporte
+        </label>
+        <div className="flex gap-2 flex-wrap">
+          {sportsWithCounts.map(({ sport, count }) => (
+            <button
+              key={sport}
+              onClick={() => { setSelectedSport(sport); setSelectedHour(null); setConfirming(null); }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                selectedSport === sport
+                  ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <span>{getSportEmoji(sport)}</span>
+              {getSportLabel(sport)}
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                selectedSport === sport ? "bg-blue-200 text-blue-800" : "bg-gray-100 text-gray-400"
+              }`}>
+                {count}
+              </span>
+            </button>
+          ))}
+          {sportsWithCounts.length === 0 && (
+            <p className="text-sm text-gray-400">No hay canchas activas</p>
           )}
+        </div>
+      </div>
 
-          {/* Date selector — horizontal scroll */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fecha</label>
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-              {upcomingDays.map((day) => {
-                const isSelected = isSameDay(day, selectedDate);
-                const isToday = isSameDay(day, today);
-                return (
-                  <button
-                    key={day.toISOString()}
-                    onClick={() => { setSelectedDate(day); setSelectedHour(null); }}
-                    className={`flex flex-col items-center min-w-[60px] px-3 py-2.5 rounded-xl border text-center transition-colors shrink-0 ${
-                      isSelected
-                        ? "border-blue-300 bg-blue-50 text-blue-900"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    <span className={`text-[10px] uppercase font-semibold ${isSelected ? "text-blue-600" : "text-gray-400"}`}>
-                      {isToday ? "Hoy" : DAY_NAMES[day.getDay()]}
-                    </span>
-                    <span className="text-lg font-bold leading-tight">{day.getDate()}</span>
-                    <span className={`text-[10px] ${isSelected ? "text-blue-500" : "text-gray-400"}`}>
-                      {MONTH_NAMES[day.getMonth()]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      {/* ── FILTER 2: Date ───────────────────────────────────────────────── */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fecha</label>
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          {upcomingDays.map((day) => {
+            const isSelected = isSameDay(day, selectedDate);
+            const isToday = isSameDay(day, today);
+            return (
+              <button
+                key={day.toISOString()}
+                onClick={() => { setSelectedDate(day); setSelectedHour(null); setConfirming(null); }}
+                className={`flex flex-col items-center min-w-[60px] px-3 py-2.5 rounded-xl border text-center transition-all shrink-0 ${
+                  isSelected
+                    ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <span className={`text-[10px] uppercase font-semibold ${isSelected ? "text-blue-600" : "text-gray-400"}`}>
+                  {isToday ? "Hoy" : DAY_NAMES[day.getDay()]}
+                </span>
+                <span className="text-lg font-bold leading-tight">{day.getDate()}</span>
+                <span className={`text-[10px] ${isSelected ? "text-blue-500" : "text-gray-400"}`}>
+                  {MONTH_NAMES[day.getMonth()]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── FILTER 3: Hour (cascaded — only available hours are active) ─── */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Hora
+          {slotsLoading && <span className="ml-2 text-blue-500 font-normal normal-case">cargando...</span>}
+        </label>
+
+        {slotsLoading ? (
+          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+            {Array.from({ length: 16 }).map((_, i) => (
+              <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+            ))}
           </div>
+        ) : sortedHours.length === 0 ? (
+          <div className="text-center py-6 bg-gray-50 rounded-xl border border-gray-100">
+            <Clock className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Sin horarios disponibles</p>
+            <p className="text-xs text-gray-400 mt-0.5">Prueba otra fecha o deporte</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+            {sortedHours.map(([hour, info]) => {
+              const isSelected = selectedHour === hour;
+              const isAvailable = info.available;
 
-          {/* Duration selector */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Duración</label>
-            <div className="flex gap-2">
-              {durationOptions.map((dur) => (
+              return (
                 <button
-                  key={dur}
-                  onClick={() => setSelectedDuration(dur)}
-                  className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
-                    selectedDuration === dur
-                      ? "border-blue-300 bg-blue-50 text-blue-900"
-                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  key={hour}
+                  onClick={() => {
+                    if (!isAvailable) return;
+                    setSelectedHour(isSelected ? null : hour);
+                    setConfirming(null);
+                  }}
+                  disabled={!isAvailable}
+                  className={`flex flex-col items-center py-2.5 px-1 rounded-xl border text-center transition-all ${
+                    isSelected
+                      ? "border-blue-400 bg-blue-50 text-blue-900 shadow-sm ring-1 ring-blue-200"
+                      : isAvailable
+                        ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300"
+                        : "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
                   }`}
                 >
-                  {dur >= 60 ? `${Math.floor(dur / 60)}h${dur % 60 ? ` ${dur % 60}m` : ""}` : `${dur} min`}
+                  <span className={`text-sm font-bold ${!isAvailable ? "text-gray-300" : ""}`}>{hour}</span>
+                  {isAvailable ? (
+                    <span className={`text-[10px] mt-0.5 font-medium ${
+                      isSelected ? "text-blue-600" : "text-emerald-600"
+                    }`}>
+                      {info.courtCount} {info.courtCount === 1 ? "cancha" : "canchas"}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] mt-0.5 text-gray-300">No disp.</span>
+                  )}
+                  {isAvailable && (
+                    <span className={`text-[10px] ${isSelected ? "text-blue-500" : "text-gray-400"}`}>
+                      {info.minPrice === Infinity ? "" : `${info.minPrice} cr`}
+                    </span>
+                  )}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
+        )}
+      </div>
 
-          {/* Hour selector */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Hora</label>
-            {hourOptions.length === 0 ? (
-              <p className="text-sm text-gray-400 py-4">No hay horarios disponibles para hoy.</p>
-            ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
-                {hourOptions.map((hour) => (
-                  <button
-                    key={hour}
-                    onClick={() => setSelectedHour(hour)}
-                    className={`py-2.5 rounded-xl border text-sm font-semibold text-center transition-colors ${
-                      selectedHour === hour
-                        ? "border-blue-300 bg-blue-50 text-blue-900"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {hour}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* ── RESULTS: Courts at selected hour (inline, no separate step) ─── */}
+      {selectedHour && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Canchas disponibles a las {selectedHour}
+          </label>
 
-          {/* CTA Button */}
-          <button
-            onClick={searchAvailability}
-            disabled={!selectedHour}
-            className="w-full py-3.5 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            VER CANCHAS DISPONIBLES
-          </button>
-        </>
-      )}
-
-      {/* ── STEP 2: Results ────────────────────────────────────────────────── */}
-      {step === "results" && (
-        <>
-          {/* Back + summary */}
-          <button
-            onClick={() => { setStep("select"); setConfirming(null); }}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Cambiar búsqueda
-          </button>
-
-          <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap text-sm">
-            <span className="font-medium text-gray-900">
-              {getSportEmoji(selectedSport)} {getSportLabel(selectedSport)}
-            </span>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-600">
-              {DAY_NAMES[selectedDate.getDay()]} {selectedDate.getDate()} {MONTH_NAMES[selectedDate.getMonth()]}
-            </span>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-600">
-              <Clock className="w-3.5 h-3.5 inline -mt-0.5 mr-0.5" />
-              {selectedHour} · {selectedDuration} min
-            </span>
-          </div>
-
-          {resultsLoading ? (
-            <div className="text-center py-12">
-              <PadelIcon className="w-8 h-8 text-gray-300 animate-pulse mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Buscando canchas disponibles...</p>
-            </div>
-          ) : results.length === 0 ? (
-            <div className="text-center py-12">
-              <PadelIcon className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 font-medium">No hay canchas disponibles</p>
-              <p className="text-xs text-gray-400 mt-1">Prueba con otro horario o fecha.</p>
+          {availableCourts.length === 0 ? (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-100">
+              <PadelIcon className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No hay canchas disponibles a esta hora</p>
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400">{results.length} cancha{results.length !== 1 ? "s" : ""} disponible{results.length !== 1 ? "s" : ""}</p>
-              {results.map((r) => {
-                const cost = r.slot.creditsCost ?? 0;
+              {availableCourts.map((court) => {
+                const cost = court.matchedSlot.creditsCost ?? 0;
                 const canAfford = creditBalance >= cost;
-                const isConfirmingThis = confirming?.courtId === r.courtId;
+                const isConfirming = confirming === court.courtId;
 
                 return (
                   <div
-                    key={r.courtId}
+                    key={court.courtId}
                     className={`bg-white rounded-xl border p-4 transition-all ${
-                      isConfirmingThis
-                        ? "border-blue-400 ring-2 ring-blue-200"
-                        : "border-gray-200"
+                      isConfirming ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                          <PadelIcon className="w-5 h-5 text-blue-600" />
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                          isConfirming ? "bg-blue-100" : "bg-gray-100"
+                        }`}>
+                          <PadelIcon className={`w-5 h-5 ${isConfirming ? "text-blue-600" : "text-gray-400"}`} />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 text-sm">{r.courtName}</p>
+                          <p className="font-semibold text-gray-900 text-sm">{court.courtName}</p>
                           <p className="text-xs text-gray-400">
-                            {getCourtTypeLabel(r.courtType)}
-                            {r.sedeName && <> · <MapPin className="w-3 h-3 inline -mt-0.5" /> {r.sedeName}</>}
+                            {getCourtTypeLabel(court.courtType)}
+                            {court.sedeName && <> · <MapPin className="w-3 h-3 inline -mt-0.5" /> {court.sedeName}</>}
                           </p>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-lg font-bold text-gray-900">{cost} <span className="text-xs font-medium text-gray-400">cr</span></p>
-                        <p className="text-[10px] text-gray-400">{r.slot.startTime}–{r.slot.endTime}</p>
+                        <p className="text-[10px] text-gray-400">{court.matchedSlot.startTime}–{court.matchedSlot.endTime}</p>
                       </div>
                     </div>
 
-                    {/* Action */}
                     <div className="mt-3">
                       {!canAfford ? (
-                        <p className="text-xs text-red-500 text-center py-2">Saldo insuficiente</p>
-                      ) : isConfirmingThis ? (
+                        <p className="text-xs text-red-500 text-center py-2 bg-red-50 rounded-lg">Saldo insuficiente ({cost} cr necesarios)</p>
+                      ) : isConfirming ? (
                         <div className="flex gap-2">
                           <button
                             onClick={() => setConfirming(null)}
-                            className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                            className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
                           >
                             Cancelar
                           </button>
                           <button
-                            onClick={() => handleBook(r)}
+                            onClick={() => handleBook(court)}
                             disabled={bookingInProgress}
-                            className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                            className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
                           >
                             {bookingInProgress ? "Reservando..." : "Confirmar reserva"}
                           </button>
                         </div>
                       ) : (
                         <button
-                          onClick={() => setConfirming(r)}
+                          onClick={() => setConfirming(court.courtId)}
                           className="w-full py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
                         >
-                          Reservar
+                          Reservar — {cost} cr
                         </button>
                       )}
                     </div>
@@ -536,7 +527,7 @@ export default function BookCourtPage() {
               })}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

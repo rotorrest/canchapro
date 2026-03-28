@@ -93,9 +93,11 @@ output "pages_landing_url" {
   description = "Landing site Pages URL"
 }
 
-output "pages_admin_url" {
-  value       = "https://${cloudflare_pages_project.admin.subdomain}"
-  description = "Admin panel Pages URL"
+# ── Health Check ─────────────────────────────────────────────────────────────
+
+output "healthcheck_api_id" {
+  value       = var.cloudflare_zone_id != "" ? cloudflare_healthcheck.api[0].id : ""
+  description = "API health check ID"
 }
 
 # ── DNS ──────────────────────────────────────────────────────────────────────

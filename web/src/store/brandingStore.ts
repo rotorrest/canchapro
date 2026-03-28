@@ -1,24 +1,33 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { TenantBranding } from "@/lib/mock-data";
-import { TENANTS, DEFAULT_BRANDING } from "@/lib/mock-data";
+
+export interface TenantBranding {
+  primaryColor: string;
+  accentColor?: string;
+  logoUrl: string | null;
+  clubName: string;
+}
+
+const DEFAULT_BRANDING: TenantBranding = {
+  primaryColor: "#1e3a8a",
+  accentColor: "#3b82f6",
+  logoUrl: null,
+  clubName: "Mi Club",
+};
 
 interface BrandingState {
   branding: TenantBranding;
-  setBranding: (branding: TenantBranding) => void;
+  setBranding: (branding: Partial<TenantBranding>) => void;
   reset: () => void;
 }
-
-// Default to tenant t1 (Ica Padel Club) branding
-const initial = TENANTS[0]?.branding ?? DEFAULT_BRANDING;
 
 export const useBrandingStore = create<BrandingState>()(
   persist(
     (set) => ({
-      branding: initial,
-      setBranding: (branding) => set({ branding }),
-      reset: () => set({ branding: initial }),
+      branding: DEFAULT_BRANDING,
+      setBranding: (b) => set((s) => ({ branding: { ...s.branding, ...b } })),
+      reset: () => set({ branding: DEFAULT_BRANDING }),
     }),
-    { name: "ica-padel-branding" }
+    { name: "canchapro-branding" }
   )
 );

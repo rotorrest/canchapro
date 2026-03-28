@@ -1,74 +1,317 @@
-import { useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
-import {
-  COURTS,
-  COURT_SCHEDULES,
-  COURT_BLOCKS,
-  MEMBERS,
-  CLUB_USERS,
-  CREDIT_PRICES,
-  BOOKINGS,
-  TRANSACTIONS,
-  MEMBER_COMMENTS,
-  CREDIT_SALES,
-  SEDES,
-  SCHEDULES,
-  AVAILABILITY_CONFIGS,
-  SPECIAL_DAYS,
-  getAvailabilityConfig,
-} from "@/lib/mock-data";
+import { useBrandingStore } from "@/store/brandingStore";
+import { api } from "@/lib/api";
 
-/**
- * Returns all data filtered by the current tenant.
- * Platform admin (tenantId === null) sees ALL data across tenants.
- */
-export function useTenantData() {
+// ── Types matching what pages expect ────────────────────────────────────────
+
+export interface Court {
+  id: string;
+  tenantId: string;
+  sedeId: string | null;
+  name: string;
+  sport: string;
+  type: string;
+  surface: string;
+  capacity: number;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  // Compat: pages use getCurrentVersion(court) which expects versions[]
+  versions: CourtVersion[];
+}
+
+export interface CourtVersion {
+  id: string;
+  courtId: string;
+  version: number;
+  name: string;
+  sport: string;
+  type: string;
+  surface: string;
+  capacity: number;
+  priceMultiplier: number;
+  createdAt: string;
+  changedBy: string;
+  reason: string;
+}
+
+export interface CourtSchedule {
+  id: string;
+  courtId: string;
+  dayOfWeek: number;
+  openTime: string | null;
+  closeTime: string | null;
+  isClosed: boolean;
+}
+
+export interface CourtBlock {
+  id: string;
+  courtId: string;
+  tenantId: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  reason: string;
+  scope: string;
+  sedeId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface Sede {
+  id: string;
+  tenantId: string;
+  name: string;
+  address: string;
+  city: string;
+  createdAt: string;
+}
+
+export interface Booking {
+  id: string;
+  tenantId: string;
+  memberId: string;
+  courtId: string;
+  startTime: string;
+  endTime: string;
+  creditsDeducted: number;
+  status: string;
+  cancelledAt: string | null;
+  createdAt: string;
+  // Enriched fields
+  memberName?: string;
+  courtName?: string;
+}
+
+export interface Member {
+  id: string;
+  tenantId: string;
+  userId: string;
+  creditBalance: number;
+  creditAllocationMonthly: number;
+  lastBookingAt: string | null;
+  user: { id: string; name: string; email: string; status: string; role: string };
+}
+
+export interface CreditPrice {
+  id: string;
+  tenantId: string;
+  slot: string;
+  dayType: string;
+  price: number;
+  effectiveFrom: string;
+}
+
+export interface CreditTransaction {
+  id: string;
+  tenantId: string;
+  memberId: string;
+  amount: number;
+  type: string;
+  reason: string;
+  bookingId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface TenantData {
+  sedes: Sede[];
+  courts: Court[];
+  courtSchedules: CourtSchedule[];
+  courtBlocks: CourtBlock[];
+  members: Member[];
+  clubUsers: { id: string; name: string; email: string; role: string; status: string }[];
+  creditPrices: CreditPrice[];
+  bookings: Booking[];
+  transactions: CreditTransaction[];
+  memberComments: never[];
+  creditSales: never[];
+  schedules: never[];
+  availabilityConfig: null;
+  specialDays: never[];
+  tenantId: string | null;
+  hasMultipleSedes: boolean;
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
+
+// ── Adapter: transform API court to frontend Court with versions ────────────
+
+function adaptCourt(apiCourt: Record<string, unknown>): Court {
+  return {
+    id: apiCourt.id as string,
+    tenantId: apiCourt.tenantId as string,
+    sedeId: (apiCourt.sedeId as string) ?? null,
+    name: apiCourt.name as string,
+    sport: apiCourt.sport as string,
+    type: apiCourt.type as string,
+    surface: apiCourt.surface as string,
+    capacity: apiCourt.capacity as number,
+    isActive: Boolean(apiCourt.isActive),
+    createdBy: (apiCourt.createdBy as string) ?? null,
+    createdAt: apiCourt.createdAt as string,
+    versions: [{
+      id: apiCourt.id as string,
+      courtId: apiCourt.id as string,
+      version: 1,
+      name: apiCourt.name as string,
+      sport: apiCourt.sport as string,
+      type: apiCourt.type as string,
+      surface: apiCourt.surface as string,
+      capacity: apiCourt.capacity as number,
+      priceMultiplier: 1,
+      createdAt: apiCourt.createdAt as string,
+      changedBy: (apiCourt.createdBy as string) ?? "",
+      reason: "Creacion inicial",
+    }],
+  };
+}
+
+// ── Hook ────────────────────────────────────────────────────────────────────
+
+export function useTenantData(): TenantData {
   const tenantId = useAuthStore((s) => s.tenantId);
+  const token = useAuthStore((s) => s.token);
   const isPlatform = useAuthStore((s) => s.user?.role === "platform_admin");
+  const setBranding = useBrandingStore((s) => s.setBranding);
 
-  return useMemo(() => {
-    if (isPlatform || !tenantId) {
-      return {
-        sedes: SEDES,
-        courts: COURTS,
-        courtSchedules: COURT_SCHEDULES,
-        courtBlocks: COURT_BLOCKS,
-        members: MEMBERS,
-        clubUsers: CLUB_USERS,
-        creditPrices: CREDIT_PRICES,
-        bookings: BOOKINGS,
-        transactions: TRANSACTIONS,
-        memberComments: MEMBER_COMMENTS,
-        creditSales: CREDIT_SALES,
-        schedules: SCHEDULES,
-        availabilityConfig: AVAILABILITY_CONFIGS[0],
-        specialDays: SPECIAL_DAYS,
-        tenantId: null,
-        hasMultipleSedes: false,
-      };
+  const [data, setData] = useState<Omit<TenantData, "refetch">>({
+    sedes: [], courts: [], courtSchedules: [], courtBlocks: [],
+    members: [], clubUsers: [], creditPrices: [],
+    bookings: [], transactions: [],
+    memberComments: [], creditSales: [], schedules: [],
+    availabilityConfig: null, specialDays: [],
+    tenantId, hasMultipleSedes: false,
+    loading: true, error: null,
+  });
+
+  const fetchData = useCallback(async () => {
+    if (!token) return;
+    if (isPlatform && !tenantId) {
+      // Platform admin without impersonation — no tenant data
+      setData((prev) => ({ ...prev, loading: false, tenantId: null }));
+      return;
     }
 
-    const tenantSedes = SEDES.filter((s) => s.tenantId === tenantId);
-    const tenantCourts = COURTS.filter((c) => c.tenantId === tenantId);
-    const courtIds = new Set(tenantCourts.map((c) => c.id));
+    setData((prev) => ({ ...prev, loading: true, error: null }));
 
-    return {
-      sedes: tenantSedes,
-      courts: tenantCourts,
-      courtSchedules: COURT_SCHEDULES.filter((s) => courtIds.has(s.courtId)),
-      courtBlocks: COURT_BLOCKS.filter((b) => b.tenantId === tenantId || (b.courtId && courtIds.has(b.courtId))),
-      members: MEMBERS.filter((m) => m.tenantId === tenantId),
-      clubUsers: CLUB_USERS.filter((u) => u.tenantId === tenantId),
-      creditPrices: CREDIT_PRICES.filter((p) => p.tenantId === tenantId),
-      bookings: BOOKINGS.filter((b) => b.tenantId === tenantId),
-      transactions: TRANSACTIONS.filter((t) => t.tenantId === tenantId),
-      memberComments: MEMBER_COMMENTS.filter((c) => c.tenantId === tenantId),
-      creditSales: CREDIT_SALES.filter((s) => s.tenantId === tenantId),
-      schedules: SCHEDULES.filter((s) => s.tenantId === tenantId),
-      availabilityConfig: getAvailabilityConfig(tenantId),
-      specialDays: SPECIAL_DAYS.filter((sd) => sd.tenantId === tenantId),
-      tenantId,
-      hasMultipleSedes: tenantSedes.length > 1,
-    };
-  }, [tenantId, isPlatform]);
+    try {
+      // Fetch all endpoints in parallel
+      const [courtsRes, sedesRes, bookingsRes, membersRes, schedulesData, blocksData, siteRes] = await Promise.all([
+        api.get<{ data: Record<string, unknown>[] }>("/v1/courts"),
+        api.get<{ data: Sede[] }>("/v1/sedes"),
+        api.get<{ data: Record<string, unknown>[] }>("/v1/bookings"),
+        api.get<{ data: Record<string, unknown>[] }>("/v1/members").catch(() => ({ data: [] })),
+        // Fetch schedules for each court — we'll batch later
+        Promise.resolve({ data: [] as CourtSchedule[] }),
+        Promise.resolve({ data: [] as CourtBlock[] }),
+        api.get<{ data: { branding: Record<string, unknown> } }>("/v1/site/config").catch(() => null),
+      ]);
+
+      const courts = courtsRes.data.map(adaptCourt);
+
+      // Fetch schedules and blocks for each court in parallel
+      const allSchedules: CourtSchedule[] = [];
+      const allBlocks: CourtBlock[] = [];
+
+      await Promise.all(courts.map(async (court) => {
+        try {
+          const [schedRes, blkRes] = await Promise.all([
+            api.get<{ data: CourtSchedule[] }>(`/v1/courts/${court.id}/schedule`),
+            api.get<{ data: CourtBlock[] }>(`/v1/courts/${court.id}/blocks`),
+          ]);
+          allSchedules.push(...schedRes.data);
+          allBlocks.push(...(blkRes.data.map((b) => ({
+            ...b,
+            tenantId: court.tenantId,
+            scope: "court",
+            sedeId: court.sedeId,
+          }))));
+        } catch { /* ignore individual failures */ }
+      }));
+
+      // Build member list with user info
+      const members: Member[] = (membersRes.data as Record<string, unknown>[]).map((m) => ({
+        id: m.id as string,
+        tenantId: m.tenantId as string,
+        userId: m.userId as string,
+        creditBalance: m.creditBalance as number,
+        creditAllocationMonthly: m.creditAllocationMonthly as number,
+        lastBookingAt: (m.lastBookingAt as string) ?? null,
+        user: {
+          id: (m.userId as string) ?? "",
+          name: (m.name as string) ?? (m.userName as string) ?? "",
+          email: (m.email as string) ?? (m.userEmail as string) ?? "",
+          status: (m.status as string) ?? (m.userStatus as string) ?? "active",
+          role: "member",
+        },
+      }));
+
+      // Enrich bookings with court/member names
+      const courtMap = new Map(courts.map((c) => [c.id, c.name]));
+      const memberMap = new Map(members.map((m) => [m.id, m.user.name]));
+
+      const bookings: Booking[] = (bookingsRes.data as Record<string, unknown>[]).map((b) => ({
+        id: b.id as string,
+        tenantId: b.tenantId as string,
+        memberId: b.memberId as string,
+        courtId: b.courtId as string,
+        startTime: b.startTime as string,
+        endTime: b.endTime as string,
+        creditsDeducted: b.creditsDeducted as number,
+        status: b.status as string,
+        cancelledAt: (b.cancelledAt as string) ?? null,
+        createdAt: b.createdAt as string,
+        memberName: memberMap.get(b.memberId as string) ?? (b.memberName as string) ?? "Socio",
+        courtName: courtMap.get(b.courtId as string) ?? (b.courtName as string) ?? "Cancha",
+      }));
+
+      // Apply branding
+      if (siteRes?.data?.branding) {
+        const b = siteRes.data.branding;
+        setBranding({
+          clubName: b.clubName as string,
+          primaryColor: b.primaryColor as string,
+          logoUrl: (b.logoUrl as string) ?? null,
+        });
+      }
+
+      const sedes = sedesRes.data;
+
+      setData({
+        sedes,
+        courts,
+        courtSchedules: allSchedules,
+        courtBlocks: allBlocks,
+        members,
+        clubUsers: [],
+        creditPrices: [],
+        bookings,
+        transactions: [],
+        memberComments: [],
+        creditSales: [],
+        schedules: [],
+        availabilityConfig: null,
+        specialDays: [],
+        tenantId,
+        hasMultipleSedes: sedes.length > 1,
+        loading: false,
+        error: null,
+      });
+    } catch (err) {
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error: err instanceof Error ? err.message : "Error cargando datos",
+      }));
+    }
+  }, [token, tenantId, isPlatform, setBranding]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { ...data, refetch: fetchData };
 }

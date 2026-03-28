@@ -1,7 +1,17 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Role, User } from "@/lib/mock-data";
-import { MOCK_USERS, authenticateUser, getTenantById } from "@/lib/mock-data";
+import { api } from "@/lib/api";
+
+export type Role = "platform_admin" | "super_admin" | "staff" | "member";
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  status: string;
+  tenantId?: string | null;
+}
 
 interface ImpersonateState {
   user: User;
@@ -11,17 +21,13 @@ interface ImpersonateState {
 
 interface AuthState {
   user: User | null;
+  token: string | null;
   tenantId: string | null;
   tenantName: string | null;
-  // Impersonation
-  impersonating: ImpersonateState | null; // stores the ORIGINAL platform admin state
+  impersonating: ImpersonateState | null;
   impersonatedTenantName: string | null;
-  // Login by email/password (multi-tenant)
-  loginWithCredentials: (email: string, password: string) => { success: boolean; error?: string };
-  // Legacy: login by role (for quick demo access)
-  login: (role: Role) => void;
+  loginWithCredentials: (email: string, password: string, tenantId?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  // Impersonation
   impersonate: (tenantId: string, tenantName: string) => void;
   exitImpersonate: () => void;
 }
@@ -30,31 +36,74 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       tenantId: null,
       tenantName: null,
       impersonating: null,
       impersonatedTenantName: null,
-      loginWithCredentials: (email, password) => {
-        const cred = authenticateUser(email, password);
-        if (!cred) return { success: false, error: "Correo o contrasena incorrectos." };
-        const tenant = cred.tenantId ? getTenantById(cred.tenantId) : null;
+
+      loginWithCredentials: async (email, password, tenantId?) => {
+        try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (tenantId) headers["x-tenant-id"] = tenantId;
+
+          const res = await fetch("/v1/auth/login", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ email, password }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            return { success: false, error: data.error ?? "Credenciales invalidas" };
+          }
+
+          const user: User = {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            role: data.user.role,
+            status: data.user.status,
+            tenantId: data.user.tenantId,
+          };
+
+          // Configure API client with token and tenant
+          api.setToken(data.token);
+          api.setTenantId(data.user.tenantId);
+
+          set({
+            user,
+            token: data.token,
+            tenantId: data.user.tenantId,
+            tenantName: data.tenantName ?? (data.user.role === "platform_admin" ? "CanchaPro" : null),
+            impersonating: null,
+            impersonatedTenantName: null,
+          });
+
+          return { success: true };
+        } catch {
+          return { success: false, error: "Error de conexion con el servidor" };
+        }
+      },
+
+      logout: () => {
+        api.setToken(null);
+        api.setTenantId(null);
         set({
-          user: cred.user,
-          tenantId: cred.tenantId,
-          tenantName: tenant?.name ?? (cred.tenantId ? null : "CanchaPro"),
+          user: null,
+          token: null,
+          tenantId: null,
+          tenantName: null,
           impersonating: null,
           impersonatedTenantName: null,
         });
-        return { success: true };
       },
-      login: (role) => {
-        set({ user: MOCK_USERS[role], tenantId: "t1", tenantName: "Ica Padel Club", impersonating: null, impersonatedTenantName: null });
-      },
-      logout: () => set({ user: null, tenantId: null, tenantName: null, impersonating: null, impersonatedTenantName: null }),
+
       impersonate: (tenantId, tenantName) => {
         const state = get();
         if (!state.user || state.user.role !== "platform_admin") return;
-        // Save current platform admin state
+        api.setTenantId(tenantId);
         set({
           impersonating: {
             user: state.user,
@@ -62,15 +111,16 @@ export const useAuthStore = create<AuthState>()(
             tenantName: state.tenantName,
           },
           impersonatedTenantName: tenantName,
-          // Switch to club admin view
-          user: { ...state.user, role: "super_admin" },
+          user: { ...state.user, role: "super_admin" as Role },
           tenantId,
           tenantName,
         });
       },
+
       exitImpersonate: () => {
         const state = get();
         if (!state.impersonating) return;
+        api.setTenantId(state.impersonating.tenantId);
         set({
           user: state.impersonating.user,
           tenantId: state.impersonating.tenantId,
@@ -80,6 +130,17 @@ export const useAuthStore = create<AuthState>()(
         });
       },
     }),
-    { name: "ica-padel-auth" }
+    {
+      name: "canchapro-auth",
+      onRehydrate: () => {
+        // After rehydrating from localStorage, configure the API client
+        return (state) => {
+          if (state?.token) {
+            api.setToken(state.token);
+            api.setTenantId(state.tenantId);
+          }
+        };
+      },
+    }
   )
 );

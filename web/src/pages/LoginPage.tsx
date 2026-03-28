@@ -1,19 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { useBrandingStore } from "@/store/brandingStore";
-import { USER_DIRECTORY, getTenantById } from "@/lib/mock-data";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import PadelIcon from "@/components/PadelIcon";
 
 const DEMO_ACCOUNTS = [
-  { label: "Lumini (Plataforma)", email: "admin@lumini.dev" },
-  { label: "Ica Padel — Admin", email: "admin@icapc.com" },
-  { label: "Ica Padel — Staff", email: "staff@icapc.com" },
-  { label: "Ica Padel — Socio", email: "socio@icapc.com" },
-  { label: "Lima Padel — Admin", email: "admin@limacp.com" },
-  { label: "Lima Padel — Staff", email: "staff@limacp.com" },
-  { label: "Lima Padel — Socio", email: "socio@limacp.com" },
+  { label: "Lumini (Plataforma)", email: "admin@lumini.dev", tenant: "" },
+  { label: "IcaDemo — Admin", email: "admin@icademo.com", tenant: "t1" },
+  { label: "IcaDemo — Staff", email: "staff@icademo.com", tenant: "t1" },
+  { label: "IcaDemo — Socio", email: "socio1@icademo.com", tenant: "t1" },
+  { label: "LimaDemo — Admin", email: "admin@limademo.com", tenant: "t2" },
+  { label: "LimaDemo — Staff", email: "staff@limademo.com", tenant: "t2" },
+  { label: "LimaDemo — Socio", email: "socio1@limademo.com", tenant: "t2" },
 ];
 
 function LeftPanel() {
@@ -43,49 +41,37 @@ function LeftPanel() {
 export default function LoginPage() {
   const navigate = useNavigate();
   const loginWithCredentials = useAuthStore((s) => s.loginWithCredentials);
-  const setBranding = useBrandingStore((s) => s.setBranding);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function applyTenantBranding(tenantId: string | null) {
-    if (!tenantId) return;
-    const tenant = getTenantById(tenantId);
-    if (tenant) setBranding(tenant.branding);
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     if (!password) { setError("Ingresa tu contrasena."); return; }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = loginWithCredentials(email, password);
-      if (!result.success) {
-        setError(result.error ?? "Error de autenticacion.");
-        setLoading(false);
-        return;
-      }
-      const cred = USER_DIRECTORY.find((c) => c.email === email.trim().toLowerCase());
-      if (cred) applyTenantBranding(cred.tenantId);
-      navigate("/");
-    }, 500);
+    // Try to detect tenant from email domain or let API handle it
+    const result = await loginWithCredentials(email, password);
+    if (!result.success) {
+      setError(result.error ?? "Error de autenticacion.");
+      setLoading(false);
+      return;
+    }
+    navigate("/");
   }
 
-  function handleQuickLogin(demoEmail: string) {
+  async function handleQuickLogin(acc: typeof DEMO_ACCOUNTS[number]) {
     setLoading(true);
-    setTimeout(() => {
-      const result = loginWithCredentials(demoEmail, "admin123");
-      if (result.success) {
-        const cred = USER_DIRECTORY.find((c) => c.email === demoEmail);
-        if (cred) applyTenantBranding(cred.tenantId);
-        navigate("/");
-      }
-      setLoading(false);
-    }, 300);
+    const result = await loginWithCredentials(acc.email, "admin123", acc.tenant || undefined);
+    if (result.success) {
+      navigate("/");
+    } else {
+      setError(result.error ?? "Error");
+    }
+    setLoading(false);
   }
 
   return (
@@ -97,7 +83,6 @@ export default function LoginPage() {
       <div className="flex flex-1 flex-col items-center justify-center bg-[#0c1e3d] lg:bg-gray-50 px-5 py-10 lg:px-12">
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 sm:p-10 shadow-lg shadow-gray-200/50">
           <div className="space-y-6">
-            {/* Mobile branding */}
             <div className="flex flex-col items-center gap-3 lg:hidden">
               <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center">
                 <PadelIcon className="w-8 h-8 text-blue-700" />
@@ -108,13 +93,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Desktop heading */}
             <div className="hidden lg:block">
               <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Iniciar sesion</h1>
               <p className="mt-1 text-sm text-gray-500">Ingresa tus credenciales para acceder</p>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo electronico</label>
@@ -173,22 +156,20 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Signup link */}
             <p className="text-center text-sm text-gray-500">
-              ¿No tienes cuenta?{" "}
+              No tienes cuenta?{" "}
               <Link to="/signup" className="text-blue-700 font-medium hover:text-blue-800 transition-colors">
                 Registra tu club
               </Link>
             </p>
 
-            {/* Demo quick access */}
             <div className="border-t border-gray-100 pt-5">
               <p className="text-xs text-gray-400 text-center mb-3">Acceso rapido demo (contrasena: admin123)</p>
               <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
                 {DEMO_ACCOUNTS.map((acc) => (
                   <button
                     key={acc.email}
-                    onClick={() => handleQuickLogin(acc.email)}
+                    onClick={() => handleQuickLogin(acc)}
                     disabled={loading}
                     className="flex items-center justify-between text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50"
                   >

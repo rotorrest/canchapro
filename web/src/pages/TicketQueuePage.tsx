@@ -1,15 +1,62 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import {
-  SUPPORT_TICKETS,
-  TICKET_MESSAGES,
   getStatusColor,
   getTicketStatusLabel,
   getPriorityColor,
   getPriorityLabel,
   getCategoryLabel,
-} from "@/lib/mock-data";
-import type { SupportTicket, TicketMessage, TicketStatus } from "@/lib/mock-data";
+} from "@/lib/domain";
+
+// ── Local types & mock data (no API endpoint yet) ───────────────────────────
+
+type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+
+interface SupportTicket {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  createdById: string;
+  createdByName: string;
+  createdByRole: string;
+  subject: string;
+  description: string;
+  category: string;
+  priority: string;
+  status: TicketStatus;
+  assignedTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  text: string;
+  createdAt: string;
+}
+
+const SUPPORT_TICKETS: SupportTicket[] = [
+  { id: "st1", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u1", createdByName: "Carlos Mendoza", createdByRole: "super_admin", subject: "Error al generar reporte mensual", description: "Al intentar exportar el reporte de creditos del mes de febrero, el sistema muestra un error 500.", category: "bug", priority: "high", status: "open", assignedTo: null, createdAt: "2026-03-25T10:00:00", updatedAt: "2026-03-25T10:00:00" },
+  { id: "st2", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u2", createdByName: "Ana Torres", createdByRole: "staff", subject: "Solicitud de modulo de torneos", description: "Nos gustaria poder organizar torneos desde la plataforma.", category: "feature", priority: "medium", status: "in_progress", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-20T14:00:00", updatedAt: "2026-03-22T09:00:00" },
+  { id: "st3", tenantId: "t2", tenantName: "Lima Padel Center", createdById: "u1", createdByName: "Miguel Sanchez", createdByRole: "super_admin", subject: "Problema con cobros duplicados", description: "Dos socios reportaron que se les cobro doble en sus creditos.", category: "billing", priority: "urgent", status: "open", assignedTo: null, createdAt: "2026-03-26T08:00:00", updatedAt: "2026-03-26T08:00:00" },
+  { id: "st4", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u1", createdByName: "Carlos Mendoza", createdByRole: "super_admin", subject: "Agregar segundo admin al sistema", description: "Necesito que mi socio tambien tenga acceso de administrador.", category: "account", priority: "low", status: "resolved", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-10T16:00:00", updatedAt: "2026-03-12T10:00:00" },
+  { id: "st5", tenantId: "t4", tenantName: "Trujillo Padel Club", createdById: "u2", createdByName: "Rosa Diaz", createdByRole: "staff", subject: "QR de socios no escanea", description: "Desde ayer los codigos QR de los socios no se pueden escanear.", category: "bug", priority: "high", status: "in_progress", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-24T09:00:00", updatedAt: "2026-03-25T11:00:00" },
+  { id: "st6", tenantId: "t3", tenantName: "Arequipa Smash", createdById: "u1", createdByName: "Luis Paredes", createdByRole: "super_admin", subject: "Consulta sobre plan Pro", description: "Estamos interesados en migrar del plan Starter al Pro.", category: "billing", priority: "low", status: "closed", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-05T12:00:00", updatedAt: "2026-03-07T15:00:00" },
+];
+
+const TICKET_MESSAGES: TicketMessage[] = [
+  { id: "tm1", ticketId: "st1", authorId: "u1", authorName: "Carlos Mendoza", authorRole: "super_admin", text: "Adjunto captura del error. Ocurre solo con el reporte de febrero.", createdAt: "2026-03-25T10:05:00" },
+  { id: "tm2", ticketId: "st2", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "Gracias por la sugerencia. El modulo de torneos esta en nuestro roadmap para Q2.", createdAt: "2026-03-22T09:00:00" },
+  { id: "tm3", ticketId: "st2", authorId: "u2", authorName: "Ana Torres", authorRole: "staff", text: "Genial! Los socios lo piden mucho.", createdAt: "2026-03-22T11:00:00" },
+  { id: "tm4", ticketId: "st4", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "Listo, Carlos. Ya agregue a tu socio como admin.", createdAt: "2026-03-12T10:00:00" },
+  { id: "tm5", ticketId: "st5", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "Estamos investigando el problema con los QR.", createdAt: "2026-03-25T11:00:00" },
+  { id: "tm6", ticketId: "st6", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "El plan Pro incluye hasta 8 canchas y reportes avanzados.", createdAt: "2026-03-06T09:00:00" },
+  { id: "tm7", ticketId: "st6", authorId: "u1", authorName: "Luis Paredes", authorRole: "super_admin", text: "Perfecto, revisare el correo. Gracias.", createdAt: "2026-03-06T14:00:00" },
+];
 import {
   DndContext,
   DragOverlay,

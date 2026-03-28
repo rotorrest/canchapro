@@ -1,13 +1,19 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import {
-  getStatusColor,
-  getStatusLabel,
-  getPaymentMethodLabel,
-} from "@/lib/mock-data";
-import type { MemberComment } from "@/lib/mock-data";
+import { getStatusColor, getStatusLabel, getPaymentMethodLabel } from "@/lib/domain";
 import { useTenantData } from "@/hooks/useTenantData";
+
+interface MemberComment {
+  id: string;
+  tenantId: string;
+  memberId: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  text: string;
+  createdAt: string;
+}
 import {
   ArrowLeft,
   CalendarDays,
@@ -76,7 +82,7 @@ export default function MemberProfilePage() {
   const memberTransactions = td.transactions.filter((t) => t.memberId === member.id).sort(
     (a, b) => b.createdAt.localeCompare(a.createdAt)
   );
-  const memberSales = td.creditSales.filter((s) => s.memberId === member.id).sort(
+  const memberSales = (td.creditSales as { id: string; memberId: string; amount: number; paymentMethod: string; soldBy: string; createdAt: string }[]).filter((s) => s.memberId === member.id).sort(
     (a, b) => b.createdAt.localeCompare(a.createdAt)
   );
   const memberComments = comments

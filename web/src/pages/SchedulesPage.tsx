@@ -1,7 +1,47 @@
 import { useState, useMemo } from "react";
 import { useTenantData } from "@/hooks/useTenantData";
-import { getCurrentVersion, getCurrentScheduleVersion } from "@/lib/mock-data";
-import type { Schedule, ScheduleVersion, ScheduleDayConfig } from "@/lib/mock-data";
+import { getCurrentVersion } from "@/lib/domain";
+
+// ── Local types (schedule system) ───────────────────────────────────────────
+
+interface ScheduleTimeRange {
+  id: string;
+  startTime: string;
+  endTime: string;
+  pricePerSlot: number;
+}
+
+interface ScheduleDayConfig {
+  dayOfWeek: number;
+  isClosed: boolean;
+  timeRanges: ScheduleTimeRange[];
+}
+
+interface ScheduleVersion {
+  id: string;
+  scheduleId: string;
+  version: number;
+  slotDurationMinutes: number;
+  minBookingDurationMinutes: number;
+  days: ScheduleDayConfig[];
+  courtIds: string[];
+  createdAt: string;
+  changedBy: string;
+  reason: string;
+}
+
+interface Schedule {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  versions: ScheduleVersion[];
+}
+
+function getCurrentScheduleVersion(schedule: Schedule): ScheduleVersion {
+  return schedule.versions.reduce((a, b) => (a.version > b.version ? a : b));
+}
 import {
   ChevronUp,
   Clock,

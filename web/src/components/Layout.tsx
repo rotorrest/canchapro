@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useBrandingStore } from "@/store/brandingStore";
@@ -30,7 +30,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import PadelIcon from "@/components/PadelIcon";
-import { TENANT_ADD_ONS, ADD_ONS_CATALOG } from "@/lib/mock-data";
+import { api } from "@/lib/api";
 
 interface NavItem {
   to: string;
@@ -176,12 +176,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const isMember = user?.role === "member";
 
-  const activeModules = useMemo(() => {
-    if (isPlatform || isMember) return [];
-    return TENANT_ADD_ONS
-      .filter((ta) => ta.tenantId === td.tenantId && !ta.cancelledAt)
-      .map((ta) => ADD_ONS_CATALOG.find((a) => a.id === ta.addOnId))
-      .filter((a): a is NonNullable<typeof a> => Boolean(a));
+  const [activeModules, setActiveModules] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (isPlatform || isMember || !td.tenantId) {
+      setActiveModules([]);
+      return;
+    }
+    api.get<{ data: { id: string; name: string }[] }>("/v1/marketplace/active")
+      .then((res) => setActiveModules(res.data ?? []))
+      .catch(() => setActiveModules([]));
   }, [isPlatform, isMember, td.tenantId]);
 
   const sidebarBrand = isPlatform ? "CanchaPro" : (tenantName ?? branding.clubName);

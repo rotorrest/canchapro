@@ -2,16 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle, Mail, MessageSquare, Phone, ShieldCheck } from "lucide-react";
 import PadelIcon from "@/components/PadelIcon";
-import { findUserByEmail } from "@/lib/mock-data";
-import type { Role } from "@/lib/mock-data";
+import { api } from "@/lib/api";
+
+type Role = "platform_admin" | "super_admin" | "staff" | "member";
 
 type Step = "email" | "method" | "code" | "password" | "success";
-
-function resolveUser(email: string): { role: Role; name: string } | null {
-  const cred = findUserByEmail(email);
-  if (!cred) return null;
-  return { role: cred.user.role, name: cred.user.name };
-}
 
 interface RecoveryMethod {
   id: string;
@@ -49,16 +44,19 @@ export default function ForgotPasswordPage() {
   const [pwError, setPwError] = useState("");
   const [sending, setSending] = useState(false);
 
-  function handleEmailSubmit(e: React.FormEvent) {
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const user = resolveUser(email.trim().toLowerCase());
-    if (!user) {
+    setSending(true);
+    try {
+      const res = await api.post<{ data: { role: Role; name: string } }>("/v1/auth/forgot-password", { email: email.trim().toLowerCase() });
+      setResolved(res.data);
+      setStep("method");
+    } catch {
       setError("No se encontro una cuenta con ese correo.");
-      return;
+    } finally {
+      setSending(false);
     }
-    setResolved(user);
-    setStep("method");
   }
 
   function handleMethodSelect(methodId: string) {

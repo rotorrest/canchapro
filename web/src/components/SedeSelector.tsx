@@ -1,4 +1,4 @@
-import type { Sede } from "@/lib/mock-data";
+import type { Sede } from "@/hooks/useTenantData";
 import { MapPin } from "lucide-react";
 
 interface SedeSelectorProps {

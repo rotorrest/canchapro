@@ -2,11 +2,7 @@ import { useState, useMemo } from "react";
 import { subDays, format, isWithinInterval, parseISO } from "date-fns";
 import { Download, FileSpreadsheet, Receipt, CalendarDays } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
-import {
-  getPaymentMethodLabel,
-  getStatusColor,
-  getStatusLabel,
-} from "@/lib/mock-data";
+import { getPaymentMethodLabel, getStatusColor, getStatusLabel } from "@/lib/domain";
 import { useTenantData } from "@/hooks/useTenantData";
 
 type Tab = "ventas" | "reservas" | "resumen";
@@ -45,8 +41,19 @@ function formatAmount(value: number, decimals = 2): string {
   return value.toFixed(decimals);
 }
 
+interface CreditSale {
+  id: string;
+  memberId: string;
+  memberName: string;
+  amount: number;
+  paymentMethod: string;
+  soldBy: string;
+  createdAt: string;
+}
+
 export default function ReportsPage() {
   const td = useTenantData();
+  const creditSales = td.creditSales as unknown as CreditSale[];
   const [tab, setTab] = useState<Tab>("ventas");
   const [startDate, setStartDate] = useState<Date | undefined>(
     subDays(new Date(), 30)
@@ -54,7 +61,7 @@ export default function ReportsPage() {
   const [endDate, setEndDate] = useState<Date | undefined>(new Date());
 
   const filteredSales = useMemo(() => {
-    return td.creditSales.filter((sale) => {
+    return creditSales.filter((sale) => {
       if (!startDate || !endDate) return true;
       const saleDate = parseISO(sale.createdAt);
       return isWithinInterval(saleDate, { start: startDate, end: endDate });

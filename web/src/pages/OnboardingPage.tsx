@@ -9,7 +9,12 @@ import {
   ChevronLeft,
   Rocket,
 } from "lucide-react";
-import type { TenantBranding } from "@/lib/mock-data";
+interface TenantBranding {
+  primaryColor: string;
+  accentColor: string;
+  logoUrl: string | null;
+  clubName: string;
+}
 
 // ── Local types for onboarding state ─────────────────────────────────────────
 

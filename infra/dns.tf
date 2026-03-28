@@ -20,6 +20,7 @@ resource "cloudflare_record" "api" {
   content = "100::" # Proxied dummy AAAA -- Cloudflare intercepts via Worker Route
   type    = "AAAA"
   proxied = true
+  ttl     = 1 # Auto (managed by Cloudflare when proxied)
   comment = "API Worker endpoint"
 }
 
@@ -31,6 +32,7 @@ resource "cloudflare_record" "app" {
   content = cloudflare_pages_project.web.subdomain
   type    = "CNAME"
   proxied = true
+  ttl     = 1
   comment = "Web dashboard (Pages)"
 }
 
@@ -42,6 +44,7 @@ resource "cloudflare_record" "admin" {
   content = cloudflare_pages_project.admin.subdomain
   type    = "CNAME"
   proxied = true
+  ttl     = 1
   comment = "Admin panel (Pages)"
 }
 
@@ -53,6 +56,7 @@ resource "cloudflare_record" "wildcard" {
   content = "100::" # Proxied dummy AAAA -- Cloudflare intercepts via Worker Route
   type    = "AAAA"
   proxied = true
+  ttl     = 1
   comment = "Wildcard for tenant subdomains -> Router Worker"
 }
 
@@ -64,6 +68,7 @@ resource "cloudflare_record" "fallback" {
   content = "100::" # Proxied dummy AAAA -- Router Worker handles the request
   type    = "AAAA"
   proxied = true
+  ttl     = 1
   comment = "Fallback origin for custom hostnames (SaaS)"
 }
 
@@ -75,5 +80,6 @@ resource "cloudflare_record" "root" {
   content = cloudflare_pages_project.landing.subdomain
   type    = "CNAME"
   proxied = true
+  ttl     = 1
   comment = "Landing site (Pages)"
 }

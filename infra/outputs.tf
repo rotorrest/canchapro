@@ -108,7 +108,7 @@ output "app_endpoint" {
 # ── Composite: wrangler.toml cheat sheet ─────────────────────────────────────
 
 output "wrangler_bindings_summary" {
-  value = <<-EOT
+  value       = <<-EOT
 
     ============================================
     Copy these into your wrangler.toml files:

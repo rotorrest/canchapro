@@ -1,12 +1,49 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
-import {
-  ADD_ONS_CATALOG,
-  BUNDLES,
-  TENANT_ADD_ONS,
-  getTenantById,
-} from "@/lib/mock-data";
-import type { AddOn, Bundle, TenantAddOn } from "@/lib/mock-data";
+import { api } from "@/lib/api";
+
+// ── Local types (previously from mock-data) ─────────────────────────────────
+
+type AddOnPriceType = "flat_monthly" | "per_unit" | "percentage" | "included";
+type AddOnStatus = "active" | "beta" | "deprecated";
+type AddOnTier = "roi" | "ops" | "engagement" | "soon";
+
+interface AddOn {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  tier: AddOnTier;
+  status: AddOnStatus;
+  price: number;
+  priceLabel: string;
+  priceType: AddOnPriceType;
+  roiHint: string | null;
+  availableOnPlans: string[];
+}
+
+interface Bundle {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  icon: string;
+  badgeLabel: string;
+  badgeColor: string;
+  addOnIds: string[];
+  price: number;
+  originalPrice: number;
+  priceLabel: string;
+}
+
+interface TenantAddOn {
+  id: string;
+  tenantId: string;
+  addOnId: string;
+  activatedAt: string;
+  cancelledAt: string | null;
+}
 import {
   MessageCircle,
   Link as LinkIcon,
@@ -87,16 +124,18 @@ function AddOnIcon({ icon, className }: { icon: string; className?: string }) {
 function BundleCard({
   bundle,
   isActive,
+  catalog,
   onActivate,
   onDeactivate,
 }: {
   bundle: Bundle;
   isActive: boolean;
+  catalog: AddOn[];
   onActivate: () => void;
   onDeactivate: () => void;
 }) {
   const includedAddOns = bundle.addOnIds
-    .map((id) => ADD_ONS_CATALOG.find((a) => a.id === id))
+    .map((id) => catalog.find((a) => a.id === id))
     .filter(Boolean) as AddOn[];
 
   const savings = bundle.originalPrice - bundle.price;
@@ -291,13 +330,24 @@ function AddOnCard({
 
 export default function MarketplacePage() {
   const { tenantId } = useAuthStore();
-  const tenant = tenantId ? getTenantById(tenantId) : null;
 
-  const [tenantAddOns, setTenantAddOns] = useState<TenantAddOn[]>(TENANT_ADD_ONS);
+  const [addOnsCatalog, setAddOnsCatalog] = useState<AddOn[]>([]);
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [tenantAddOns, setTenantAddOns] = useState<TenantAddOn[]>([]);
   const [activeBundles, setActiveBundles] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<"bundles" | "modules">("bundles");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Todos");
+
+  useEffect(() => {
+    api.get<{ data: { addOns: AddOn[]; bundles: Bundle[]; tenantAddOns: TenantAddOn[] } }>("/v1/marketplace/catalog")
+      .then((res) => {
+        setAddOnsCatalog(res.data.addOns ?? []);
+        setBundles(res.data.bundles ?? []);
+        setTenantAddOns(res.data.tenantAddOns ?? []);
+      })
+      .catch(() => {});
+  }, []);
   const [confirmModal, setConfirmModal] = useState<
     | { kind: "addon"; addOn: AddOn; action: "activate" | "deactivate" }
     | { kind: "bundle"; bundle: Bundle; action: "activate" | "deactivate" }
@@ -310,12 +360,12 @@ export default function MarketplacePage() {
   );
 
   const monthlyAddOnCost = useMemo(() => {
-    return ADD_ONS_CATALOG.filter((a) => activeAddOnIds.has(a.id) && a.priceType === "flat_monthly")
+    return addOnsCatalog.filter((a) => activeAddOnIds.has(a.id) && a.priceType === "flat_monthly")
       .reduce((s, a) => s + a.price, 0);
-  }, [activeAddOnIds]);
+  }, [activeAddOnIds, addOnsCatalog]);
 
   const catalog = useMemo(() => {
-    let items = ADD_ONS_CATALOG.filter((a) => a.status !== "deprecated");
+    let items = addOnsCatalog.filter((a) => a.status !== "deprecated");
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       items = items.filter(
@@ -326,10 +376,9 @@ export default function MarketplacePage() {
       items = items.filter((a) => a.category === selectedCategory);
     }
     return items;
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, addOnsCatalog]);
 
-  const isAddOnAvailable = (addOn: AddOn) =>
-    !tenant || addOn.availableOnPlans.includes(tenant.plan);
+  const isAddOnAvailable = (_addOn: AddOn) => true;
 
   function handleActivateAddOn(addOn: AddOn) {
     setTenantAddOns((prev) => {
@@ -355,7 +404,7 @@ export default function MarketplacePage() {
     setActiveBundles((prev) => new Set([...prev, bundle.id]));
     // Also activate all add-ons in the bundle
     bundle.addOnIds.forEach((id) => {
-      const addOn = ADD_ONS_CATALOG.find((a) => a.id === id);
+      const addOn = addOnsCatalog.find((a) => a.id === id);
       if (addOn) handleActivateAddOn(addOn);
     });
     setConfirmModal(null);
@@ -423,11 +472,12 @@ export default function MarketplacePage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {BUNDLES.map((bundle) => (
+            {bundles.map((bundle) => (
               <BundleCard
                 key={bundle.id}
                 bundle={bundle}
                 isActive={activeBundles.has(bundle.id)}
+                catalog={addOnsCatalog}
                 onActivate={() => setConfirmModal({ kind: "bundle", bundle, action: "activate" })}
                 onDeactivate={() => setConfirmModal({ kind: "bundle", bundle, action: "deactivate" })}
               />
@@ -525,7 +575,7 @@ export default function MarketplacePage() {
                   <div className="bg-blue-50 rounded-xl p-4 mb-5 space-y-2 text-sm">
                     <p className="font-semibold text-gray-800 mb-2">Incluye:</p>
                     {confirmModal.bundle.addOnIds.map((id) => {
-                      const a = ADD_ONS_CATALOG.find((x) => x.id === id);
+                      const a = addOnsCatalog.find((x) => x.id === id);
                       if (!a) return null;
                       return (
                         <div key={id} className="flex items-center gap-2 text-gray-600">

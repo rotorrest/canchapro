@@ -39,32 +39,40 @@ export function getBookingDisplayStatus(booking: { status: string; startTime: st
 
 export function getStatusColor(status: string): string {
   return {
-    confirmed: "bg-blue-100 text-blue-700",
-    in_progress: "bg-emerald-100 text-emerald-700",
-    completed: "bg-gray-100 text-gray-600",
-    cancelled: "bg-red-100 text-red-600",
-    no_show: "bg-amber-100 text-amber-700",
+    // User statuses
+    active: "bg-emerald-100 text-emerald-700",
+    suspended: "bg-red-100 text-red-700",
+    inactive: "bg-gray-100 text-gray-600",
+    // Booking statuses
+    confirmed: "bg-blue-100 text-blue-900",
+    in_progress: "bg-amber-100 text-amber-700",
+    completed: "bg-emerald-100 text-emerald-700",
+    cancelled: "bg-red-100 text-red-700",
+    no_show: "bg-gray-100 text-gray-600",
+    // Ticket statuses
+    open: "bg-amber-100 text-amber-700",
+    resolved: "bg-emerald-100 text-emerald-700",
+    closed: "bg-gray-100 text-gray-600",
   }[status] ?? "bg-gray-100 text-gray-600";
 }
 
 export function getStatusLabel(status: string): string {
   return {
-    confirmed: "Confirmada",
-    in_progress: "En curso",
-    completed: "Completada",
-    cancelled: "Cancelada",
-    no_show: "No asistio",
+    active: "\u25CF Activo",
+    suspended: "\u25B2 Suspendido",
+    inactive: "\u25CB Inactivo",
+    confirmed: "\u25CF Confirmada",
+    in_progress: "\u25B6 En curso",
+    completed: "\u2713 Completada",
+    cancelled: "\u2715 Cancelada",
+    no_show: "\u25CB No asistio",
   }[status] ?? status;
 }
 
 // ── Court version helper ────────────────────────────────────────────────────
 
-export function getCurrentVersion(court: { versions?: { version: number }[] } & Record<string, unknown>): Record<string, unknown> {
-  if (court.versions && court.versions.length > 0) {
-    return court.versions.reduce((a, b) => (a.version > b.version ? a : b)) as Record<string, unknown>;
-  }
-  // Flat court (no versions) — return the court itself as the "version"
-  return court;
+export function getCurrentVersion<V extends { version: number }>(court: { versions: V[] }): V {
+  return court.versions.reduce((a, b) => (a.version > b.version ? a : b));
 }
 
 // ── Payment methods ─────────────────────────────────────────────────────────

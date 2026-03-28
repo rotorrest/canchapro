@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { getStatusColor, getStatusLabel, getBookingDisplayStatus, getMemberByUserId } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
+import { getStatusColor, getStatusLabel, getBookingDisplayStatus } from "@/lib/domain";
+import type { Member } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTenantData } from "@/hooks/useTenantData";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -9,36 +11,59 @@ import { QRCodeSVG } from "qrcode.react";
 export default function MyBookingsPage() {
   const user = useAuthStore((s) => s.user);
   const td = useTenantData();
-  const member = user ? getMemberByUserId(user.id) : undefined;
-  const memberId = member?.id ?? "";
 
-  const [bookings, setBookings] = useState(
-    td.bookings.filter((b) => b.memberId === memberId)
-  );
+  const [member, setMember] = useState<Member | null>(null);
+  const [memberLoading, setMemberLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelInProgress, setCancelInProgress] = useState(false);
   const [qrBookingId, setQrBookingId] = useState<string | null>(null);
 
+  // Fetch current member from API
+  useEffect(() => {
+    if (!user) {
+      setMemberLoading(false);
+      return;
+    }
+    let cancelled = false;
+    api.get<{ data: Member }>("/v1/members/me").then((res) => {
+      if (!cancelled) setMember(res.data);
+    }).catch(() => {
+      if (!cancelled) setMember(null);
+    }).finally(() => {
+      if (!cancelled) setMemberLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const memberId = member?.id ?? "";
+  const bookings = td.bookings.filter((b) => b.memberId === memberId);
   const cancellingBooking = cancellingId ? bookings.find((b) => b.id === cancellingId) : null;
 
-  function confirmCancel() {
+  async function confirmCancel() {
     if (!cancellingId) return;
-    setBookings(
-      bookings.map((b) =>
-        b.id === cancellingId
-          ? {
-              ...b,
-              status: "cancelled" as const,
-              cancelledAt: new Date().toISOString(),
-            }
-          : b
-      )
-    );
-    setCancellingId(null);
+    setCancelInProgress(true);
+    try {
+      await api.delete(`/v1/bookings/${cancellingId}`);
+      td.refetch();
+    } catch {
+      // Could add error toast here
+    } finally {
+      setCancelInProgress(false);
+      setCancellingId(null);
+    }
   }
 
   const bookingsWithDisplay = bookings.map((b) => ({ ...b, displayStatus: getBookingDisplayStatus(b) }));
   const active = bookingsWithDisplay.filter((b) => b.displayStatus === "confirmed" || b.displayStatus === "in_progress");
   const past = bookingsWithDisplay.filter((b) => b.displayStatus !== "confirmed" && b.displayStatus !== "in_progress");
+
+  if (memberLoading || td.loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-gray-500">Cargando...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -248,9 +273,10 @@ export default function MyBookingsPage() {
               </Dialog.Close>
               <button
                 onClick={confirmCancel}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                disabled={cancelInProgress}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                Si, cancelar
+                {cancelInProgress ? "Cancelando..." : "Si, cancelar"}
               </button>
             </div>
           </Dialog.Content>

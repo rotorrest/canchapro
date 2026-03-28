@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { Member } from "@/lib/mock-data";
 import { useTenantData } from "@/hooks/useTenantData";
+import type { Member } from "@/hooks/useTenantData";
 import { ShieldCheck, Clock, Percent, Search, Info } from "lucide-react";
 
 export default function CancellationPolicyPage() {

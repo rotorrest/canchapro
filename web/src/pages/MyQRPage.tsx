@@ -1,19 +1,47 @@
+import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuthStore } from "@/store/authStore";
 import { useBrandingStore } from "@/store/brandingStore";
-import { getMemberByUserId } from "@/lib/mock-data";
+import { api } from "@/lib/api";
+import type { Member } from "@/hooks/useTenantData";
 import PadelIcon from "@/components/PadelIcon";
 
 export default function MyQRPage() {
   const user = useAuthStore((s) => s.user);
   const branding = useBrandingStore((s) => s.branding);
-  const member = user ? getMemberByUserId(user.id) : undefined;
+
+  const [member, setMember] = useState<Member | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    api.get<{ data: Member }>("/v1/members/me").then((res) => {
+      if (!cancelled) setMember(res.data);
+    }).catch(() => {
+      if (!cancelled) setMember(null);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const qrData = JSON.stringify({
     type: "ica-padel-member",
     memberId: member?.id ?? "",
     name: user?.name ?? "",
   });
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[75vh]">
+        <p className="text-gray-500">Cargando...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[75vh] gap-6 px-4">

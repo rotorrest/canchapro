@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { getStatusColor, getStatusLabel, getBookingDisplayStatus } from "@/lib/mock-data";
-import type { Booking } from "@/lib/mock-data";
+import { getStatusColor, getStatusLabel, getBookingDisplayStatus } from "@/lib/domain";
+import type { Booking } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { useTenantData } from "@/hooks/useTenantData";
 import { useSedeStore } from "@/store/sedeStore";
 import { MapPin, Search, ScanLine, CheckCircle } from "lucide-react";
@@ -19,21 +20,20 @@ export default function BookingsPage() {
   const { selectedSede } = useSedeStore();
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [bookings, setBookings] = useState<Booking[]>(td.bookings);
   const [scanning, setScanning] = useState(false);
   const [checkedIn, setCheckedIn] = useState<Booking | null>(null);
 
   const activeSedeName = selectedSede ? td.sedes.find((s) => s.id === selectedSede)?.name : null;
 
   const bookingsWithDisplay = useMemo(
-    () => bookings.map((b) => ({ ...b, displayStatus: getBookingDisplayStatus(b) })),
-    [bookings]
+    () => td.bookings.map((b) => ({ ...b, displayStatus: getBookingDisplayStatus(b) })),
+    [td.bookings]
   );
 
   const filtered = bookingsWithDisplay
     .filter((b) => {
       if (filter !== "all" && b.displayStatus !== filter) return false;
-      if (search && !b.memberName.toLowerCase().includes(search.toLowerCase()) && !b.courtName.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search && !b.memberName?.toLowerCase().includes(search.toLowerCase()) && !b.courtName?.toLowerCase().includes(search.toLowerCase())) return false;
       if (selectedSede) {
         const court = td.courts.find((c) => c.id === b.courtId);
         if (!court || court.sedeId !== selectedSede) return false;
@@ -47,15 +47,32 @@ export default function BookingsPage() {
     setCheckedIn(null);
     setTimeout(() => {
       // Find a confirmed booking to "check in"
-      const confirmed = bookings.find((b) => b.status === "confirmed");
+      const confirmed = td.bookings.find((b) => b.status === "confirmed");
       if (confirmed) {
-        setBookings(bookings.map((b) =>
-          b.id === confirmed.id ? { ...b, status: "completed" as const } : b
-        ));
+        // In a real implementation, this would call the API
         setCheckedIn(confirmed);
+        td.refetch();
       }
       setScanning(false);
     }, 1500);
+  }
+
+  async function handleCancel(bookingId: string) {
+    try {
+      await api.delete(`/v1/bookings/${bookingId}`);
+      td.refetch();
+    } catch {
+      // Could add error toast here
+    }
+  }
+
+  async function handleNoShow(bookingId: string) {
+    try {
+      await api.put(`/v1/bookings/${bookingId}`, { status: "no_show" });
+      td.refetch();
+    } catch {
+      // Could add error toast here
+    }
   }
 
   return (
@@ -187,7 +204,7 @@ export default function BookingsPage() {
                     <div className="flex items-center gap-1 justify-end">
                       {b.displayStatus === "confirmed" && (
                         <button
-                          onClick={() => setBookings(bookings.map((x) => x.id === b.id ? { ...x, status: "cancelled" as const, cancelledAt: new Date().toISOString() } : x))}
+                          onClick={() => handleCancel(b.id)}
                           className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
                         >
                           Cancelar
@@ -195,7 +212,7 @@ export default function BookingsPage() {
                       )}
                       {(b.displayStatus === "completed" || b.displayStatus === "in_progress") && b.status !== "no_show" && (
                         <button
-                          onClick={() => setBookings(bookings.map((x) => x.id === b.id ? { ...x, status: "no_show" as const } : x))}
+                          onClick={() => handleNoShow(b.id)}
                           className="text-xs font-medium text-gray-500 hover:bg-gray-100 px-2 py-1 rounded-lg transition-colors"
                         >
                           No asistio

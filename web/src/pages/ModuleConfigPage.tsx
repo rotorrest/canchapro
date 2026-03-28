@@ -1,7 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ADD_ONS_CATALOG, TENANT_ADD_ONS } from "@/lib/mock-data";
 import { useAuthStore } from "@/store/authStore";
+import { api } from "@/lib/api";
+
+// ── Local types ─────────────────────────────────────────────────────────────
+
+interface AddOn {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  tier: string;
+  status: string;
+  price: number;
+  priceLabel: string;
+  priceType: string;
+  roiHint: string | null;
+  availableOnPlans: string[];
+}
+
+interface TenantAddOn {
+  id: string;
+  tenantId: string;
+  addOnId: string;
+  activatedAt: string;
+  cancelledAt: string | null;
+}
 import {
   ArrowLeft,
   Check,
@@ -496,8 +521,21 @@ export default function ModuleConfigPage() {
   const { id } = useParams<{ id: string }>();
   const tenantId = useAuthStore((s) => s.tenantId);
 
-  const addOn = ADD_ONS_CATALOG.find((a) => a.id === id);
-  const isActive = TENANT_ADD_ONS.some((ta) => ta.tenantId === tenantId && ta.addOnId === id && !ta.cancelledAt);
+  const [addOnsCatalog, setAddOnsCatalog] = useState<AddOn[]>([]);
+  const [tenantAddOns, setTenantAddOns] = useState<TenantAddOn[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      api.get<{ data: { addOns: AddOn[] } }>("/v1/marketplace/catalog").catch(() => ({ data: { addOns: [] } })),
+      api.get<{ data: TenantAddOn[] }>("/v1/marketplace/active").catch(() => ({ data: [] })),
+    ]).then(([catalogRes, activeRes]) => {
+      setAddOnsCatalog(catalogRes.data.addOns ?? []);
+      setTenantAddOns(activeRes.data ?? []);
+    });
+  }, []);
+
+  const addOn = addOnsCatalog.find((a) => a.id === id);
+  const isActive = tenantAddOns.some((ta) => ta.tenantId === tenantId && ta.addOnId === id && !ta.cancelledAt);
 
   if (!addOn) {
     return (

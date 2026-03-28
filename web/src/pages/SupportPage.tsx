@@ -1,15 +1,58 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import {
-  SUPPORT_TICKETS,
-  TICKET_MESSAGES,
   getStatusColor,
   getTicketStatusLabel,
   getPriorityColor,
   getPriorityLabel,
   getCategoryLabel,
-} from "@/lib/mock-data";
-import type { SupportTicket, TicketMessage, TicketCategory, TicketPriority, TicketStatus } from "@/lib/mock-data";
+} from "@/lib/domain";
+
+// ── Local types & mock data (no API endpoint yet) ───────────────────────────
+
+type TicketPriority = "low" | "medium" | "high" | "urgent";
+type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+type TicketCategory = "bug" | "feature" | "billing" | "account" | "other";
+
+interface SupportTicket {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  createdById: string;
+  createdByName: string;
+  createdByRole: string;
+  subject: string;
+  description: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  status: TicketStatus;
+  assignedTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  text: string;
+  createdAt: string;
+}
+
+const SUPPORT_TICKETS: SupportTicket[] = [
+  { id: "st1", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u1", createdByName: "Carlos Mendoza", createdByRole: "super_admin", subject: "Error al generar reporte mensual", description: "Al intentar exportar el reporte de creditos del mes de febrero, el sistema muestra un error 500.", category: "bug", priority: "high", status: "open", assignedTo: null, createdAt: "2026-03-25T10:00:00", updatedAt: "2026-03-25T10:00:00" },
+  { id: "st2", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u2", createdByName: "Ana Torres", createdByRole: "staff", subject: "Solicitud de modulo de torneos", description: "Nos gustaria poder organizar torneos desde la plataforma.", category: "feature", priority: "medium", status: "in_progress", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-20T14:00:00", updatedAt: "2026-03-22T09:00:00" },
+  { id: "st4", tenantId: "t1", tenantName: "Ica Padel Club", createdById: "u1", createdByName: "Carlos Mendoza", createdByRole: "super_admin", subject: "Agregar segundo admin al sistema", description: "Necesito que mi socio tambien tenga acceso de administrador.", category: "account", priority: "low", status: "resolved", assignedTo: "Rodrigo Lumini", createdAt: "2026-03-10T16:00:00", updatedAt: "2026-03-12T10:00:00" },
+];
+
+const TICKET_MESSAGES: TicketMessage[] = [
+  { id: "tm1", ticketId: "st1", authorId: "u1", authorName: "Carlos Mendoza", authorRole: "super_admin", text: "Adjunto captura del error. Ocurre solo con el reporte de febrero.", createdAt: "2026-03-25T10:05:00" },
+  { id: "tm2", ticketId: "st2", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "Gracias por la sugerencia. El modulo de torneos esta en nuestro roadmap para Q2.", createdAt: "2026-03-22T09:00:00" },
+  { id: "tm3", ticketId: "st2", authorId: "u2", authorName: "Ana Torres", authorRole: "staff", text: "Genial! Los socios lo piden mucho.", createdAt: "2026-03-22T11:00:00" },
+  { id: "tm4", ticketId: "st4", authorId: "u0", authorName: "Rodrigo Lumini", authorRole: "platform_admin", text: "Listo, Carlos. Ya agregue a tu socio como admin.", createdAt: "2026-03-12T10:00:00" },
+];
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowLeft,

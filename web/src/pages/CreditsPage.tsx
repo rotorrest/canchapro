@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTenantData } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { CheckCircle, Clock, Plus, Search, X, ScanLine } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
@@ -56,9 +57,16 @@ export default function CreditsPage() {
   }
 
   // ── Sales handlers ─────────────────────────────────────────────────────────
-  function handleSale() {
+  async function handleSale() {
     const member = td.members.find((m) => m.id === saleForm.memberId);
     if (!member) return;
+
+    await api.post(`/v1/members/${member.id}/credit-sales`, {
+      amount: saleForm.amount,
+      pricePaid: saleForm.pricePaid,
+      method: saleForm.method,
+      note: saleForm.note,
+    });
 
     const newSale: SaleRecord = {
       id: `s${Date.now()}`,
@@ -71,9 +79,10 @@ export default function CreditsPage() {
       createdAt: new Date().toISOString(),
     };
     setSales([newSale, ...sales]);
+    td.refetch();
     setShowSaleForm(false);
     setSaleForm({ memberId: "", amount: 10, pricePaid: 0, method: "Yape", note: "" });
-    setSaleSuccess(`${newSale.amount} creditos cargados a ${newSale.memberName}`);
+    setSaleSuccess(`${newSale.amount} creditos cargados a ${member.user.name}`);
     setTimeout(() => setSaleSuccess(null), 4000);
   }
 

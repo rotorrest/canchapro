@@ -1,6 +1,7 @@
-import { getMemberByUserId } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import type { Member, CreditTransaction } from "@/hooks/useTenantData";
 import { useAuthStore } from "@/store/authStore";
-import { useTenantData } from "@/hooks/useTenantData";
 import { useBrandingStore } from "@/store/brandingStore";
 import { ArrowDownLeft, Coins, RefreshCcw, Wrench } from "lucide-react";
 
@@ -12,15 +13,54 @@ const typeConfig: Record<string, { icon: React.ElementType; color: string; label
 
 export default function BalancePage() {
   const user = useAuthStore((s) => s.user);
-  const td = useTenantData();
   const { branding } = useBrandingStore();
-  const member = user ? getMemberByUserId(user.id) : undefined;
+
+  const [member, setMember] = useState<Member | null>(null);
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+
+    api.get<{ data: Member }>("/v1/members/me")
+      .then((res) => {
+        if (cancelled) return;
+        setMember(res.data);
+        // Fetch transactions for this member
+        return api.get<{ data: CreditTransaction[] }>(`/v1/members/${res.data.id}/transactions`);
+      })
+      .then((res) => {
+        if (cancelled || !res) return;
+        setTransactions(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setMember(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-gray-500">Cargando...</p>
+      </div>
+    );
+  }
 
   if (!member) return null;
 
-  const myTransactions = td.transactions.filter((t) => t.memberId === member.id);
   const used = member.creditAllocationMonthly - member.creditBalance;
-  const usedPct = Math.round((used / member.creditAllocationMonthly) * 100);
+  const usedPct = member.creditAllocationMonthly > 0
+    ? Math.round((used / member.creditAllocationMonthly) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -60,7 +100,7 @@ export default function BalancePage() {
           <h2 className="font-semibold text-gray-900">Historial de transacciones</h2>
         </div>
         <div className="divide-y divide-gray-100">
-          {myTransactions.map((tx) => {
+          {transactions.map((tx) => {
             const cfg = typeConfig[tx.type] ?? typeConfig.adjustment;
             const Icon = cfg.icon;
             return (

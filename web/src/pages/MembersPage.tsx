@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getStatusColor, getStatusLabel } from "@/lib/mock-data";
-import type { Member } from "@/lib/mock-data";
+import { getStatusColor, getStatusLabel } from "@/lib/domain";
 import { useTenantData } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { ChevronRight, Plus, Search, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
 export default function MembersPage() {
   const navigate = useNavigate();
   const td = useTenantData();
-  const [members, setMembers] = useState<Member[]>(td.members);
+  const members = td.members;
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", allocation: 50 });
@@ -20,30 +20,18 @@ export default function MembersPage() {
       m.user.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  function setStatus(id: string, status: "active" | "suspended" | "inactive") {
-    setMembers(
-      members.map((m) =>
-        m.id === id ? { ...m, user: { ...m.user, status } } : m
-      )
-    );
+  async function setStatus(id: string, status: "active" | "suspended" | "inactive") {
+    await api.put(`/v1/members/${id}`, { status });
+    td.refetch();
   }
 
-  function handleAdd() {
-    const newMember: Member = {
-      id: `m${Date.now()}`,
-      tenantId: td.tenantId ?? "t1",
-      user: {
-        id: `u${Date.now()}`,
-        email: form.email,
-        name: form.name,
-        role: "member",
-        status: "active",
-      },
-      creditBalance: form.allocation,
+  async function handleAdd() {
+    await api.post("/v1/members", {
+      name: form.name,
+      email: form.email,
       creditAllocationMonthly: form.allocation,
-      lastBookingAt: null,
-    };
-    setMembers([...members, newMember]);
+    });
+    td.refetch();
     setShowForm(false);
     setForm({ name: "", email: "", allocation: 50 });
   }

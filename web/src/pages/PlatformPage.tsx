@@ -1,19 +1,22 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import {
-  TENANTS,
-  COURTS,
-  MEMBERS,
-  BOOKINGS,
-  SEDES,
-  SCHEDULES,
-  CLUB_USERS,
-  getCurrentVersion,
-  getCurrentScheduleVersion,
-} from "@/lib/mock-data";
-import type { Tenant } from "@/lib/mock-data";
 import { useAuthStore } from "@/store/authStore";
 import { useBrandingStore } from "@/store/brandingStore";
+import { api } from "@/lib/api";
+
+interface Tenant {
+  id: string;
+  slug: string;
+  name: string;
+  city: string;
+  courts: number;
+  members: number;
+  monthlyRevenue: number;
+  plan: "starter" | "pro" | "business";
+  status: "active" | "trial" | "suspended";
+  branding: { clubName: string; primaryColor: string };
+  createdAt: string;
+}
 import {
   Building2,
   Search,
@@ -64,11 +67,17 @@ export default function PlatformPage() {
   const impersonate = useAuthStore((s) => s.impersonate);
   const setBranding = useBrandingStore((s) => s.setBranding);
   const [search, setSearch] = useState("");
-  const [tenants, setTenants] = useState(TENANTS);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  useEffect(() => {
+    api.get<{ data: Tenant[] }>("/v1/platform/tenants")
+      .then((res) => setTenants(res.data))
+      .catch(() => {});
+  }, []);
+
   function handleImpersonate(t: Tenant) {
-    setBranding(t.branding);
+    setBranding({ clubName: t.branding.clubName, primaryColor: t.branding.primaryColor, logoUrl: null });
     impersonate(t.id, t.name);
     navigate("/");
   }
@@ -107,6 +116,8 @@ export default function PlatformPage() {
 
   // ── Per-tenant enriched data ─────────────────────────────────────────────────
 
+  // Per-tenant details are no longer enriched from local mock data.
+  // The platform API returns summary info on each tenant directly.
   const tenantDetails = useMemo(() => {
     const map = new Map<string, {
       courts: { name: string; sport: string; isActive: boolean }[];
@@ -120,31 +131,15 @@ export default function PlatformPage() {
     }>();
 
     for (const t of tenants) {
-      const tCourts = COURTS.filter((c) => c.tenantId === t.id).map((c) => {
-        const v = getCurrentVersion(c);
-        return { name: v.name, sport: v.sport, isActive: c.isActive };
-      });
-      const tSedes = SEDES.filter((s) => s.tenantId === t.id).map((s) => s.name);
-      const tSchedules = SCHEDULES.filter((s) => s.tenantId === t.id).map((s) => {
-        const sv = getCurrentScheduleVersion(s);
-        return { name: s.name, isActive: s.isActive, courts: sv.courtIds.length };
-      });
-      const tMembers = MEMBERS.filter((m) => m.tenantId === t.id).length;
-      const tClubUsers = CLUB_USERS.filter((u) => u.tenantId === t.id);
-      const tStaff = tClubUsers.filter((u) => u.user.role === "staff").length;
-      const tAdmins = tClubUsers.filter((u) => u.user.role === "super_admin").length;
-      const tBookings = BOOKINGS.filter((b) => b.tenantId === t.id);
-      const confirmed = tBookings.filter((b) => b.status === "confirmed").length;
-
       map.set(t.id, {
-        courts: tCourts,
-        sedes: tSedes,
-        schedules: tSchedules,
-        members: tMembers,
-        staff: tStaff,
-        admins: tAdmins,
-        recentBookings: tBookings.length,
-        confirmedBookings: confirmed,
+        courts: [],
+        sedes: [],
+        schedules: [],
+        members: t.members,
+        staff: 0,
+        admins: 0,
+        recentBookings: 0,
+        confirmedBookings: 0,
       });
     }
     return map;

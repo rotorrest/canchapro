@@ -50,6 +50,15 @@ resource "cloudflare_worker_script" "api" {
     queue   = cloudflare_queue.notifications.name
   }
 
+  # ── Queue consumer binding ──
+  queue_consumer_binding {
+    queue_name        = cloudflare_queue.notifications.name
+    max_batch_size    = 10
+    max_batch_timeout = 30
+    max_retries       = 3
+    dead_letter_queue = cloudflare_queue.dlq.name
+  }
+
   # ── Environment variables ──
   plain_text_binding {
     name = "ENVIRONMENT"
@@ -69,9 +78,9 @@ resource "cloudflare_worker_route" "api" {
 resource "cloudflare_worker_cron_trigger" "api_crons" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker_script.api.name
-  schedules   = [
-    "0 * * * *",   # Every hour: booking reminders
-    "0 0 1 * *",   # 1st of month midnight: monthly credit reset
+  schedules = [
+    "0 * * * *", # Every hour: booking reminders
+    "0 0 1 * *", # 1st of month midnight: monthly credit reset
   ]
 }
 
@@ -97,7 +106,12 @@ resource "cloudflare_worker_script" "router" {
 
   plain_text_binding {
     name = "WEB_APP_URL"
-    text = "https://${cloudflare_pages_project.web.subdomain}"
+    text = local.manage_dns ? "https://app.${var.domain}" : "https://${cloudflare_pages_project.web.subdomain}"
+  }
+
+  plain_text_binding {
+    name = "ENVIRONMENT"
+    text = var.environment
   }
 }
 
@@ -126,5 +140,15 @@ resource "cloudflare_worker_script" "club_site" {
   r2_bucket_binding {
     name        = "UPLOADS"
     bucket_name = cloudflare_r2_bucket.uploads.name
+  }
+
+  plain_text_binding {
+    name = "ENVIRONMENT"
+    text = var.environment
+  }
+
+  plain_text_binding {
+    name = "API_URL"
+    text = local.manage_dns ? "https://api.${var.domain}" : "https://canchapro-api-${var.environment}.workers.dev"
   }
 }

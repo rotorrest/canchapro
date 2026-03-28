@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { MapPin, Plus, Trash2, Building2, AlertCircle, X } from "lucide-react";
 import { useTenantData } from "@/hooks/useTenantData";
-import type { Sede } from "@/lib/mock-data";
+import type { Sede } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 
 interface SedeForm {
   name: string;
@@ -14,7 +15,7 @@ const EMPTY_FORM: SedeForm = { name: "", address: "", city: "" };
 export default function SedesPage() {
   const td = useTenantData();
 
-  const [sedes, setSedes] = useState<Sede[]>(td.sedes);
+  const sedes = td.sedes;
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<SedeForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<SedeForm>>({});
@@ -34,23 +35,22 @@ export default function SedesPage() {
     return Object.keys(e).length === 0;
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!validate()) return;
-    const newSede: Sede = {
-      id: `s-${Date.now()}`,
-      tenantId: td.tenantId ?? "t1",
+    await api.post("/v1/sedes", {
       name: form.name.trim(),
       address: form.address.trim(),
       city: form.city.trim(),
-    };
-    setSedes((prev) => [...prev, newSede]);
+    });
+    td.refetch();
     setForm(EMPTY_FORM);
     setErrors({});
     setShowModal(false);
   }
 
-  function handleDelete(id: string) {
-    setSedes((prev) => prev.filter((s) => s.id !== id));
+  async function handleDelete(id: string) {
+    await api.delete(`/v1/sedes/${id}`);
+    td.refetch();
     setDeleteId(null);
   }
 

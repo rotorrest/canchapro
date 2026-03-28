@@ -31,7 +31,7 @@ import {
   BOOKINGS_BY_COURT,
   filterByDateRange,
 } from "@/lib/mock-charts";
-import { getBookingDisplayStatus } from "@/lib/mock-data";
+import { getBookingDisplayStatus } from "@/lib/domain";
 import DatePicker from "@/components/DatePicker";
 import { useSedeStore } from "@/store/sedeStore";
 import { useTenantData } from "@/hooks/useTenantData";

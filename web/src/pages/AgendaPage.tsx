@@ -1,13 +1,7 @@
 import { useMemo, useState } from "react";
-import {
-  BOOKINGS,
-  MEMBERS,
-  getCurrentVersion,
-  getActiveScheduleForCourt,
-  getCurrentScheduleVersion,
-  getBlocksForCourt,
-} from "@/lib/mock-data";
-import type { Booking, Court } from "@/lib/mock-data";
+import { getCurrentVersion } from "@/lib/domain";
+import type { Booking, Court, CourtBlock, CourtSchedule } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { ChevronLeft, ChevronRight, MapPin, Plus, X, Ban, CalendarDays, Calendar } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useTenantData } from "@/hooks/useTenantData";
@@ -39,10 +33,15 @@ function getMonday(d: Date) {
   return r;
 }
 
-function isBlocked(courtId: string, date: Date, hour: number, tenantId: string, sedeId: string | null): string | null {
+function isBlocked(courtId: string, date: Date, hour: number, allBlocks: CourtBlock[]): string | null {
   const dateStr = toDateStr(date);
   const hourStr = `${String(hour).padStart(2, "0")}:00`;
-  const blocks = getBlocksForCourt(courtId, dateStr, tenantId, sedeId);
+  const blocks = allBlocks.filter((b) => {
+    if (b.date !== dateStr) return false;
+    if (b.courtId === courtId) return true;
+    if (b.scope === "sede" || b.scope === "tenant") return true;
+    return false;
+  });
   for (const b of blocks) {
     if (!b.startTime && !b.endTime) return b.reason || "Bloqueado";
     if (b.startTime && b.endTime && hourStr >= b.startTime && hourStr < b.endTime) {
@@ -52,15 +51,17 @@ function isBlocked(courtId: string, date: Date, hour: number, tenantId: string, 
   return null;
 }
 
-function isOutsideSchedule(courtId: string, date: Date, hour: number): boolean {
+function isOutsideSchedule(courtId: string, date: Date, hour: number, allSchedules: CourtSchedule[]): boolean {
   const dow = date.getDay() === 0 ? 6 : date.getDay() - 1;
-  const sch = getActiveScheduleForCourt(courtId);
-  if (!sch) return true;
-  const sv = getCurrentScheduleVersion(sch);
-  const dayConfig = sv.days.find((d) => d.dayOfWeek === dow);
+  const courtSchedules = allSchedules.filter((s) => s.courtId === courtId);
+  if (courtSchedules.length === 0) return true;
+  const dayConfig = courtSchedules.find((s) => s.dayOfWeek === dow);
   if (!dayConfig || dayConfig.isClosed) return true;
   const hourStr = `${String(hour).padStart(2, "0")}:00`;
-  return !dayConfig.timeRanges.some((r) => hourStr >= r.startTime && hourStr < r.endTime);
+  if (dayConfig.openTime && dayConfig.closeTime) {
+    return hourStr < dayConfig.openTime || hourStr >= dayConfig.closeTime;
+  }
+  return true;
 }
 
 // ── Week summary helpers ─────────────────────────────────────────────────────
@@ -69,7 +70,8 @@ function getWeekDaySummary(
   date: Date,
   courts: Court[],
   bookings: Booking[],
-  tenantId: string,
+  allBlocks: CourtBlock[],
+  allSchedules: CourtSchedule[],
 ) {
   const dateStr = toDateStr(date);
   const dayBookings = bookings.filter((b) => {
@@ -83,11 +85,10 @@ function getWeekDaySummary(
 
   for (const court of courts) {
     for (let h = 6; h <= 21; h++) {
-      const outside = isOutsideSchedule(court.id, date, h);
+      const outside = isOutsideSchedule(court.id, date, h, allSchedules);
       if (outside) continue;
       totalSlots++;
-      const sedeId = court.sedeId ?? null;
-      const blocked = isBlocked(court.id, date, h, tenantId, sedeId);
+      const blocked = isBlocked(court.id, date, h, allBlocks);
       if (blocked) { blockedSlots++; continue; }
       const booked = dayBookings.some((b) => {
         const bHour = parseInt(b.startTime.split("T")[1].split(":")[0]);
@@ -116,14 +117,13 @@ export default function AgendaPage() {
 
   const [date, setDate] = useState(() => new Date());
   const [view, setView] = useState<"day" | "week">("day");
-  const [bookings, setBookings] = useState<Booking[]>(BOOKINGS);
+  const bookings = td.bookings;
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ courtId: string; hour: number } | null>(null);
   const [bookingForm, setBookingForm] = useState({ memberId: "", duration: 1 });
 
   const hours = Array.from({ length: 16 }, (_, i) => i + 6);
   const dateStr = toDateStr(date);
-  const tenantId = td.tenantId ?? "";
 
   // Week dates
   const weekStart = getMonday(date);
@@ -146,9 +146,9 @@ export default function AgendaPage() {
   const weekSummaries = useMemo(() => {
     return weekDates.map((d) => ({
       date: d,
-      ...getWeekDaySummary(d, activeCourts, bookings, tenantId),
+      ...getWeekDaySummary(d, activeCourts, bookings, td.courtBlocks, td.courtSchedules),
     }));
-  }, [weekDates, activeCourts, bookings, tenantId]);
+  }, [weekDates, activeCourts, bookings, td.courtBlocks, td.courtSchedules]);
 
   function prevDay() { setDate((d) => addDaysTo(d, view === "week" ? -7 : -1)); }
   function nextDay() { setDate((d) => addDaysTo(d, view === "week" ? 7 : 1)); }
@@ -160,40 +160,28 @@ export default function AgendaPage() {
     setShowBookingModal(true);
   }
 
-  function handleCreateBooking() {
+  async function handleCreateBooking() {
     if (!selectedSlot || !bookingForm.memberId) return;
     const court = activeCourts.find((c) => c.id === selectedSlot.courtId);
-    const member = MEMBERS.find((m) => m.id === bookingForm.memberId);
-    if (!court || !member) return;
+    if (!court) return;
 
-    const v = getCurrentVersion(court);
     const startH = String(selectedSlot.hour).padStart(2, "0");
     const endH = String(selectedSlot.hour + bookingForm.duration).padStart(2, "0");
 
-    const newBooking: Booking = {
-      id: `b${Date.now()}`,
-      tenantId: td.tenantId ?? "",
-      memberId: member.id,
-      memberName: member.user.name,
+    await api.post("/v1/bookings/staff", {
+      memberId: bookingForm.memberId,
       courtId: court.id,
-      courtVersionId: v.id,
-      courtName: v.name,
       startTime: `${dateStr}T${startH}:00:00`,
       endTime: `${dateStr}T${endH}:00:00`,
-      creditsDeducted: bookingForm.duration,
-      status: "confirmed",
-      cancelledAt: null,
-      createdAt: new Date().toISOString(),
-    };
+    });
 
-    setBookings([...bookings, newBooking]);
+    td.refetch();
     setShowBookingModal(false);
   }
 
-  function handleCancelBooking(bookingId: string) {
-    setBookings(bookings.map((b) =>
-      b.id === bookingId ? { ...b, status: "cancelled" as const, cancelledAt: new Date().toISOString() } : b
-    ));
+  async function handleCancelBooking(bookingId: string) {
+    await api.put(`/v1/bookings/${bookingId}`, { status: "cancelled" });
+    td.refetch();
   }
 
   return (
@@ -279,8 +267,8 @@ export default function AgendaPage() {
                       {activeCourts.map((court) => {
                         const key = `${court.id}-${hour}`;
                         const booking = bookingMap.get(key);
-                        const blocked = isBlocked(court.id, date, hour, tenantId, court.sedeId);
-                        const outside = isOutsideSchedule(court.id, date, hour);
+                        const blocked = isBlocked(court.id, date, hour, td.courtBlocks);
+                        const outside = isOutsideSchedule(court.id, date, hour, td.courtSchedules);
 
                         if (outside) {
                           return (
@@ -452,7 +440,7 @@ export default function AgendaPage() {
                   onChange={(e) => setBookingForm({ ...bookingForm, memberId: e.target.value })}
                 >
                   <option value="">Seleccionar...</option>
-                  {MEMBERS.filter((m) => m.user.status === "active").map((m) => (
+                  {td.members.filter((m) => m.user.status === "active").map((m) => (
                     <option key={m.id} value={m.id}>{m.user.name} ({m.creditBalance} cr)</option>
                   ))}
                 </select>

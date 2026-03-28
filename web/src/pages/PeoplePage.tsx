@@ -1,13 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  getStatusColor,
-  getStatusLabel,
-  type Member,
-  type ClubUser,
-  type Role,
-} from "@/lib/mock-data";
+import { getStatusColor, getStatusLabel } from "@/lib/domain";
 import { useTenantData } from "@/hooks/useTenantData";
+import type { Member } from "@/hooks/useTenantData";
+
+type Role = "platform_admin" | "super_admin" | "staff" | "member";
+
+interface ClubUser {
+  id: string;
+  tenantId: string;
+  user: { id: string; name: string; email: string; role: string; status: string };
+  phone: string | null;
+  position: string | null;
+  joinedAt: string;
+}
 import {
   MoreVertical,
   Pencil,
@@ -104,7 +110,16 @@ export default function PeoplePage() {
   const td = useTenantData();
 
   const [members, setMembers] = useState<Member[]>(td.members);
-  const [clubUsers, setClubUsers] = useState<ClubUser[]>(td.clubUsers);
+  const [clubUsers, setClubUsers] = useState<ClubUser[]>(
+    td.clubUsers.map((u) => ({
+      id: u.id,
+      tenantId: td.tenantId ?? "",
+      user: { id: u.id, name: u.name, email: u.email, role: u.role, status: u.status },
+      phone: null,
+      position: null,
+      joinedAt: "",
+    }))
+  );
 
   const [activeTab, setActiveTab] = useState<Tab>("socios");
   const [search, setSearch] = useState("");
@@ -162,7 +177,7 @@ export default function PeoplePage() {
       phone: "",
       position: "",
       allocation: m.creditAllocationMonthly,
-      status: m.user.status,
+      status: (m.user.status as PersonForm["status"]) ?? "active",
     });
     setModalOpen(true);
   }
@@ -175,7 +190,7 @@ export default function PeoplePage() {
       phone: u.phone ?? "",
       position: u.position ?? "",
       allocation: 0,
-      status: u.user.status,
+      status: (u.user.status as PersonForm["status"]) ?? "active",
     });
     setModalOpen(true);
   }
@@ -216,11 +231,13 @@ export default function PeoplePage() {
         activeTab === "admins" ? "super_admin" : activeTab === "staff" ? "staff" : "member";
 
       if (role === "member") {
+        const newUserId = `u${Date.now()}`;
         const newMember: Member = {
           id: `m${Date.now()}`,
           tenantId: td.tenantId ?? "t1",
+          userId: newUserId,
           user: {
-            id: `u${Date.now()}`,
+            id: newUserId,
             email: form.email,
             name: form.name,
             role: "member",

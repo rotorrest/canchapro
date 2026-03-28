@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
-import {
-  generateSlots,
-  getCourtTypeLabel,
-  getCurrentVersion,
-  getMemberByUserId,
-} from "@/lib/mock-data";
-import type { TimeSlot } from "@/lib/mock-data";
+import { getCourtTypeLabel, getCurrentVersion } from "@/lib/domain";
+import type { Member } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTenantData } from "@/hooks/useTenantData";
 import { useSedeStore } from "@/store/sedeStore";
@@ -14,6 +10,14 @@ import { CalendarDays, CheckCircle, ChevronLeft, ChevronRight } from "lucide-rea
 import PadelIcon from "@/components/PadelIcon";
 import SedeSelector from "@/components/SedeSelector";
 
+interface TimeSlot {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+  creditsCost: number | null;
+  durationMinutes?: number;
+}
+
 function formatDate(d: Date) {
   return d.toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" });
 }
@@ -21,8 +25,27 @@ function formatDate(d: Date) {
 export default function BookCourtPage() {
   const user = useAuthStore((s) => s.user);
   const td = useTenantData();
-  const member = user ? getMemberByUserId(user.id) : undefined;
   const { selectedSede, setSelectedSede } = useSedeStore();
+
+  const [member, setMember] = useState<Member | null>(null);
+  const [memberLoading, setMemberLoading] = useState(true);
+
+  // Fetch current member from API
+  useEffect(() => {
+    if (!user) {
+      setMemberLoading(false);
+      return;
+    }
+    let cancelled = false;
+    api.get<{ data: Member }>("/v1/members/me").then((res) => {
+      if (!cancelled) setMember(res.data);
+    }).catch(() => {
+      if (!cancelled) setMember(null);
+    }).finally(() => {
+      if (!cancelled) setMemberLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Auto-select first sede for members in multi-sede clubs
   useEffect(() => {
@@ -33,11 +56,19 @@ export default function BookCourtPage() {
 
   const activeCourts = td.courts.filter((c) => c.isActive && (!selectedSede || c.sedeId === selectedSede));
 
-  const [creditBalance, setCreditBalance] = useState(member?.creditBalance ?? 0);
+  const [creditBalance, setCreditBalance] = useState(0);
   const [selectedCourt, setSelectedCourt] = useState(activeCourts[0]?.id ?? "");
   const [date, setDate] = useState(() => new Date());
   const [confirming, setConfirming] = useState<TimeSlot | null>(null);
   const [booked, setBooked] = useState<TimeSlot | null>(null);
+  const [slots, setSlots] = useState<TimeSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [bookingInProgress, setBookingInProgress] = useState(false);
+
+  // Sync credit balance when member loads
+  useEffect(() => {
+    if (member) setCreditBalance(member.creditBalance);
+  }, [member]);
 
   // Auto-select first court when courts list changes
   useEffect(() => {
@@ -53,23 +84,46 @@ export default function BookCourtPage() {
     return () => clearTimeout(timer);
   }, [booked]);
 
-  const now = new Date();
-  const isToday =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-  const currentHour = now.getHours();
-
-  const slots = generateSlots(date, selectedCourt).map((slot) => {
-    // Mark past hours as unavailable on today
-    if (isToday) {
-      const slotHour = parseInt(slot.startTime.split(":")[0], 10);
-      if (slotHour <= currentHour) {
-        return { ...slot, available: false };
-      }
+  // Fetch availability slots from API
+  useEffect(() => {
+    if (!selectedCourt) {
+      setSlots([]);
+      return;
     }
-    return slot;
-  });
+    let cancelled = false;
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    setSlotsLoading(true);
+    api.get<{ data: TimeSlot[] }>(`/v1/courts/${selectedCourt}/availability?date=${dateStr}`)
+      .then((res) => {
+        if (!cancelled) {
+          const now = new Date();
+          const isToday =
+            date.getFullYear() === now.getFullYear() &&
+            date.getMonth() === now.getMonth() &&
+            date.getDate() === now.getDate();
+          const currentHour = now.getHours();
+
+          const processed = res.data.map((slot) => {
+            // Mark past hours as unavailable on today
+            if (isToday) {
+              const slotHour = parseInt(slot.startTime.split(":")[0], 10);
+              if (slotHour <= currentHour) {
+                return { ...slot, available: false };
+              }
+            }
+            return slot;
+          });
+          setSlots(processed);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCourt, date]);
 
   function prevDay() {
     const d = new Date(date);
@@ -86,10 +140,34 @@ export default function BookCourtPage() {
     setDate(d);
   }
 
-  function handleConfirm(slot: TimeSlot) {
-    setCreditBalance((prev) => Math.max(0, prev - slot.creditsCost));
-    setBooked(slot);
-    setConfirming(null);
+  async function handleConfirm(slot: TimeSlot) {
+    if (bookingInProgress) return;
+    setBookingInProgress(true);
+    try {
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      await api.post("/v1/bookings", {
+        courtId: selectedCourt,
+        startTime: `${dateStr}T${slot.startTime}:00`,
+        endTime: `${dateStr}T${slot.endTime}:00`,
+      });
+      setCreditBalance((prev) => Math.max(0, prev - (slot.creditsCost ?? 0)));
+      setBooked(slot);
+      setConfirming(null);
+      td.refetch();
+    } catch {
+      // Could add error toast here
+    } finally {
+      setBookingInProgress(false);
+    }
+  }
+
+  if (memberLoading || td.loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <PadelIcon className="w-12 h-12 text-gray-300 animate-pulse" />
+        <p className="text-gray-500">Cargando...</p>
+      </div>
+    );
   }
 
   if (!member) {
@@ -141,8 +219,8 @@ export default function BookCourtPage() {
               }`}
             >
               <PadelIcon className="w-4 h-4" />
-              {v.name}
-              <span className="text-xs text-gray-400">({getCourtTypeLabel(v.type)})</span>
+              {v.name as string}
+              <span className="text-xs text-gray-400">({getCourtTypeLabel(v.type as string)})</span>
             </button>
           );
         })}
@@ -192,59 +270,64 @@ export default function BookCourtPage() {
       )}
 
       {/* Time slots grid */}
-      <div className={`grid gap-2 ${
-        slots.length > 16
-          ? "grid-cols-3 sm:grid-cols-6 lg:grid-cols-10"
-          : "grid-cols-2 sm:grid-cols-4 lg:grid-cols-8"
-      }`}>
-        {slots.map((slot) => {
-          const canAfford = creditBalance >= slot.creditsCost;
-          const isConfirming = confirming?.startTime === slot.startTime;
-          return (
-            <button
-              key={slot.startTime}
-              disabled={!slot.available || !canAfford}
-              onClick={() =>
-                isConfirming ? handleConfirm(slot) : setConfirming(slot)
-              }
-              className={`rounded-xl border p-3 text-center transition-all ${
-                isConfirming
-                  ? "border-blue-400 bg-blue-50 ring-2 ring-blue-300"
-                  : slot.available && canAfford
-                    ? "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/50"
-                    : "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
-              }`}
-            >
-              <p className="text-sm font-semibold text-gray-900">
-                {slot.startTime}
-              </p>
-              <p className="text-xs text-gray-500">{slot.endTime}</p>
-              {slot.durationMinutes !== 60 && (
-                <p className="text-[10px] text-gray-400">{slot.durationMinutes} min</p>
-              )}
-              <p
-                className={`text-xs font-medium mt-1 ${
-                  slot.available ? "text-blue-800" : "text-red-400"
+      {slotsLoading ? (
+        <div className="text-center py-8 text-sm text-gray-400">Cargando horarios...</div>
+      ) : (
+        <div className={`grid gap-2 ${
+          slots.length > 16
+            ? "grid-cols-3 sm:grid-cols-6 lg:grid-cols-10"
+            : "grid-cols-2 sm:grid-cols-4 lg:grid-cols-8"
+        }`}>
+          {slots.map((slot) => {
+            const cost = slot.creditsCost ?? 0;
+            const canAfford = creditBalance >= cost;
+            const isConfirming = confirming?.startTime === slot.startTime;
+            return (
+              <button
+                key={slot.startTime}
+                disabled={!slot.available || !canAfford || bookingInProgress}
+                onClick={() =>
+                  isConfirming ? handleConfirm(slot) : setConfirming(slot)
+                }
+                className={`rounded-xl border p-3 text-center transition-all ${
+                  isConfirming
+                    ? "border-blue-400 bg-blue-50 ring-2 ring-blue-300"
+                    : slot.available && canAfford
+                      ? "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/50"
+                      : "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
                 }`}
               >
-                {slot.available ? `${slot.creditsCost} cr` : "Ocupado"}
-              </p>
-              {isConfirming && (
-                <p className="text-[10px] text-blue-900 font-semibold mt-1">
-                  Click para confirmar
+                <p className="text-sm font-semibold text-gray-900">
+                  {slot.startTime}
                 </p>
-              )}
-            </button>
-          );
-        })}
-      </div>
+                <p className="text-xs text-gray-500">{slot.endTime}</p>
+                {slot.durationMinutes && slot.durationMinutes !== 60 && (
+                  <p className="text-[10px] text-gray-400">{slot.durationMinutes} min</p>
+                )}
+                <p
+                  className={`text-xs font-medium mt-1 ${
+                    slot.available ? "text-blue-800" : "text-red-400"
+                  }`}
+                >
+                  {slot.available ? `${cost} cr` : "Ocupado"}
+                </p>
+                {isConfirming && (
+                  <p className="text-[10px] text-blue-900 font-semibold mt-1">
+                    {bookingInProgress ? "Reservando..." : "Click para confirmar"}
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Confirm hint */}
       {confirming && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm">
           <p className="text-blue-950">
             <strong>Confirmar reserva:</strong>{" "}
-            {(() => { const c = activeCourts.find((ct) => ct.id === selectedCourt); return c ? getCurrentVersion(c).name : ""; })()} &middot;{" "}
+            {(() => { const c = activeCourts.find((ct) => ct.id === selectedCourt); return c ? (getCurrentVersion(c).name as string) : ""; })()} &middot;{" "}
             {confirming.startTime}–{confirming.endTime} &middot;{" "}
             <strong>{confirming.creditsCost} creditos</strong>
           </p>

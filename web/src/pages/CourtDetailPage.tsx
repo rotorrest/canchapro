@@ -1,14 +1,15 @@
 import { useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useAuthStore } from "@/store/authStore";
 import { useTenantData } from "@/hooks/useTenantData";
 import {
   getCurrentVersion,
   getSportLabel,
   getSportEmoji,
   getCourtTypeLabel,
-} from "@/lib/mock-data";
-import type { Court, CourtVersion, CourtSchedule, CourtBlock, CourtSport } from "@/lib/mock-data";
+} from "@/lib/domain";
+import type { CourtSport } from "@/lib/domain";
+import type { Court, CourtVersion, CourtSchedule } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import {
   ArrowLeft,
   Ban,
@@ -39,12 +40,11 @@ type CourtFormData = {
 
 export default function CourtDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const user = useAuthStore((s) => s.user);
   const td = useTenantData();
 
-  const [courts, setCourts] = useState<Court[]>(td.courts);
-  const [schedules, setSchedules] = useState<CourtSchedule[]>(td.courtSchedules);
-  const [blocks, setBlocks] = useState<CourtBlock[]>(td.courtBlocks);
+  const courts = td.courts;
+  const schedules = td.courtSchedules;
+  const blocks = td.courtBlocks;
   const [editModal, setEditModal] = useState(false);
   const [blockModal, setBlockModal] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -75,7 +75,7 @@ export default function CourtDetailPage() {
   // ── Edit form ────────────────────────────────────────────────────────────
   const [form, setForm] = useState<CourtFormData>({
     name: v.name,
-    sport: v.sport,
+    sport: v.sport as CourtSport,
     type: v.type,
     surface: v.surface,
     capacity: v.capacity,
@@ -86,33 +86,32 @@ export default function CourtDetailPage() {
 
   function openEdit() {
     setForm({
-      name: v.name, sport: v.sport, type: v.type, surface: v.surface,
+      name: v.name, sport: v.sport as CourtSport, type: v.type, surface: v.surface,
       capacity: v.capacity, priceMultiplier: v.priceMultiplier,
       sedeId: court.sedeId ?? "", reason: "",
     });
     setEditModal(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.reason.trim()) return;
-    const userName = user?.name ?? "Sistema";
-    setCourts(courts.map((c) => {
-      if (c.id !== court.id) return c;
-      const prev = getCurrentVersion(c);
-      const newVersion: CourtVersion = {
-        id: `cv${Date.now()}`, courtId: c.id, version: prev.version + 1,
-        name: form.name, sport: form.sport, type: form.type,
-        surface: form.surface, capacity: form.capacity,
-        priceMultiplier: form.priceMultiplier,
-        createdAt: new Date().toISOString(), changedBy: userName, reason: form.reason,
-      };
-      return { ...c, sedeId: form.sedeId || c.sedeId, versions: [...c.versions, newVersion] };
-    }));
+    await api.put(`/v1/courts/${court.id}`, {
+      name: form.name,
+      sport: form.sport,
+      type: form.type,
+      surface: form.surface,
+      capacity: form.capacity,
+      priceMultiplier: form.priceMultiplier,
+      sedeId: form.sedeId || null,
+      reason: form.reason,
+    });
+    td.refetch();
     setEditModal(false);
   }
 
-  function toggleActive() {
-    setCourts(courts.map((c) => (c.id === court.id ? { ...c, isActive: !c.isActive } : c)));
+  async function toggleActive() {
+    await api.put(`/v1/courts/${court.id}`, { isActive: !court.isActive });
+    td.refetch();
     setDeactivateModal(false);
   }
 
@@ -129,8 +128,11 @@ export default function CourtDetailPage() {
   }
 
   // ── Schedule editing ─────────────────────────────────────────────────────
-  function updateSchedule(sid: string, field: keyof CourtSchedule, value: string | boolean) {
-    setSchedules(schedules.map((s) => (s.id === sid ? { ...s, [field]: value } : s)));
+  async function updateSchedule(sid: string, field: keyof CourtSchedule, value: string | boolean) {
+    const schedule = schedules.find((s) => s.id === sid);
+    if (!schedule) return;
+    await api.post(`/v1/courts/${court.id}/schedule`, { ...schedule, [field]: value });
+    td.refetch();
   }
 
   // ── Block conflict detection ─────────────────────────────────────────────
@@ -150,14 +152,16 @@ export default function CourtDetailPage() {
 
   const hasConflicts = blockConflicts.length > 0;
 
-  function addBlock() {
+  async function addBlock() {
     if (!blockForm.date) return;
     if (hasConflicts && !forceBlock) return;
-    setBlocks([...blocks, {
-      id: `cb${Date.now()}`, tenantId: court.tenantId, scope: "court", sedeId: court.sedeId,
-      courtId: court.id, date: blockForm.date,
-      startTime: blockForm.startTime || null, endTime: blockForm.endTime || null, reason: blockForm.reason,
-    }]);
+    await api.post(`/v1/courts/${court.id}/blocks`, {
+      date: blockForm.date,
+      startTime: blockForm.startTime || null,
+      endTime: blockForm.endTime || null,
+      reason: blockForm.reason,
+    });
+    td.refetch();
     setBlockModal(false);
     setForceBlock(false);
     setBlockForm({ date: "", startTime: "", endTime: "", reason: "" });
@@ -254,13 +258,13 @@ export default function CourtDetailPage() {
                   <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-2 font-medium text-gray-900">{dayLabels[s.dayOfWeek]}</td>
                     <td className="px-5 py-2">
-                      <input type="time" value={s.openTime} disabled={s.isClosed}
+                      <input type="time" value={s.openTime ?? ""} disabled={s.isClosed}
                         onChange={(e) => updateSchedule(s.id, "openTime", e.target.value)}
                         className="border border-gray-300 rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </td>
                     <td className="px-5 py-2">
-                      <input type="time" value={s.closeTime} disabled={s.isClosed}
+                      <input type="time" value={s.closeTime ?? ""} disabled={s.isClosed}
                         onChange={(e) => updateSchedule(s.id, "closeTime", e.target.value)}
                         className="border border-gray-300 rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
@@ -308,7 +312,7 @@ export default function CourtDetailPage() {
                   </span>
                   {bl.reason && <span className="text-xs text-gray-400">· {bl.reason}</span>}
                 </div>
-                <button onClick={() => setBlocks(blocks.filter((b) => b.id !== bl.id))}
+                <button onClick={async () => { await api.delete(`/v1/courts/${court.id}/blocks/${bl.id}`); td.refetch(); }}
                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />

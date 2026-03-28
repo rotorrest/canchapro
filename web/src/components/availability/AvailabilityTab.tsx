@@ -1,17 +1,82 @@
 import { useState, useMemo } from "react";
 import { useTenantData } from "@/hooks/useTenantData";
-import type {
-  AvailabilityConfig,
-  Schedule,
-  SpecialDay,
-  Court,
-} from "@/lib/mock-data";
-import {
-  getCurrentVersion,
-  getCurrentScheduleVersion,
-  generateSlots,
-  getSportEmoji,
-} from "@/lib/mock-data";
+import type { Court } from "@/hooks/useTenantData";
+import { getCurrentVersion, getSportEmoji } from "@/lib/domain";
+
+// ── Local types (availability system) ───────────────────────────────────────
+
+interface AvailabilityConfig {
+  tenantId: string;
+  defaultSlotDuration: 30 | 60 | 90 | 120;
+  minAdvanceMinutes: number;
+  maxAdvanceDays: number;
+  maxBookingsPerMemberPerDay: number;
+  bufferMinutes: number;
+  noShowToleranceMinutes: number;
+  autoCancelNoShow: boolean;
+  bookingDeadlineTime: string | null;
+}
+
+interface ScheduleTimeRange {
+  id: string;
+  startTime: string;
+  endTime: string;
+  pricePerSlot: number;
+}
+
+interface ScheduleDayConfig {
+  dayOfWeek: number;
+  isClosed: boolean;
+  timeRanges: ScheduleTimeRange[];
+}
+
+interface ScheduleVersion {
+  id: string;
+  scheduleId: string;
+  version: number;
+  slotDurationMinutes: number;
+  minBookingDurationMinutes: number;
+  days: ScheduleDayConfig[];
+  courtIds: string[];
+  createdAt: string;
+  changedBy: string;
+  reason: string;
+}
+
+interface Schedule {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  versions: ScheduleVersion[];
+}
+
+interface SpecialDay {
+  id: string;
+  tenantId: string;
+  date: string;
+  label: string;
+  isClosed: boolean;
+  scheduleOverrideId: string | null;
+}
+
+interface TimeSlot {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+  creditsCost: number;
+  durationMinutes: number;
+}
+
+function getCurrentScheduleVersion(schedule: Schedule): ScheduleVersion {
+  return schedule.versions.reduce((a, b) => (a.version > b.version ? a : b));
+}
+
+/** Stub: generateSlots will need to be replaced with an API call */
+function generateSlots(_date: Date, _courtId: string): TimeSlot[] {
+  return [];
+}
 import {
   Clock,
   Settings,

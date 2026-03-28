@@ -1,15 +1,15 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useAuthStore } from "@/store/authStore";
 import {
   getCourtTypeLabel,
   getSportLabel,
   getSportEmoji,
   getCurrentVersion,
-  getActiveScheduleForCourt,
-} from "@/lib/mock-data";
+} from "@/lib/domain";
+import type { CourtSport } from "@/lib/domain";
 import { useTenantData } from "@/hooks/useTenantData";
-import type { Court, CourtVersion, CourtBlock, Booking, CourtSport } from "@/lib/mock-data";
+import type { Court, Booking } from "@/hooks/useTenantData";
+import { api } from "@/lib/api";
 import { Ban, ChevronRight, MapPin, Plus, Trash2, AlertTriangle, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import PadelIcon from "@/components/PadelIcon";
@@ -41,15 +41,14 @@ const EMPTY_FORM: CourtFormData = {
 };
 
 export default function CourtsPage() {
-  const user = useAuthStore((s) => s.user);
   const td = useTenantData();
-  const [courts, setCourts] = useState<Court[]>(td.courts);
+  const courts = td.courts;
+  const blocks = td.courtBlocks;
   const { selectedSede } = useSedeStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCourtId, setEditingCourtId] = useState<string | null>(null);
   const [form, setForm] = useState<CourtFormData>(EMPTY_FORM);
   const [tab, setTab] = useState<"courts" | "availability" | "blocks">("courts");
-  const [blocks, setBlocks] = useState<CourtBlock[]>(td.courtBlocks);
   const [blockModal, setBlockModal] = useState(false);
   const [blockForm, setBlockForm] = useState({ courtId: "", date: "", startTime: "", endTime: "", reason: "" });
   const [deactivateModal, setDeactivateModal] = useState<{ courtId: string; courtName: string } | null>(null);
@@ -63,68 +62,43 @@ export default function CourtsPage() {
   }
 
   // ── Save handler ───────────────────────────────────────────────────────────
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim()) return;
-    const userName = user?.name ?? "Sistema";
 
     if (editingCourtId) {
       if (!form.reason.trim()) return; // reason required on edit
-      setCourts(
-        courts.map((c) => {
-          if (c.id !== editingCourtId) return c;
-          const prev = getCurrentVersion(c);
-          const newVersion: CourtVersion = {
-            id: `cv${Date.now()}`,
-            courtId: c.id,
-            version: prev.version + 1,
-            name: form.name,
-            sport: form.sport,
-            type: form.type,
-            surface: form.surface,
-            capacity: form.capacity,
-            priceMultiplier: form.priceMultiplier,
-            createdAt: new Date().toISOString(),
-            changedBy: userName,
-            reason: form.reason,
-          };
-          return { ...c, versions: [...c.versions, newVersion] };
-        })
-      );
+      await api.put(`/v1/courts/${editingCourtId}`, {
+        name: form.name,
+        sport: form.sport,
+        type: form.type,
+        surface: form.surface,
+        capacity: form.capacity,
+        priceMultiplier: form.priceMultiplier,
+        sedeId: form.sedeId || null,
+        reason: form.reason,
+      });
     } else {
-      const id = `c${Date.now()}`;
-      const newCourt: Court = {
-        id,
-        tenantId: td.tenantId ?? "t1",
+      await api.post("/v1/courts", {
+        name: form.name,
+        sport: form.sport,
+        type: form.type,
+        surface: form.surface,
+        capacity: form.capacity,
+        priceMultiplier: form.priceMultiplier,
         sedeId: form.sedeId || (td.sedes.length === 1 ? td.sedes[0].id : null),
-        isActive: true,
-        versions: [
-          {
-            id: `cv${Date.now()}`,
-            courtId: id,
-            version: 1,
-            name: form.name,
-            sport: form.sport,
-            type: form.type,
-            surface: form.surface,
-            capacity: form.capacity,
-            priceMultiplier: form.priceMultiplier,
-            createdAt: new Date().toISOString(),
-            changedBy: userName,
-            reason: "Creacion inicial",
-          },
-        ],
-      };
-      setCourts([...courts, newCourt]);
+      });
     }
 
+    td.refetch();
     setModalOpen(false);
     setForm(EMPTY_FORM);
     setEditingCourtId(null);
   }
 
-  function confirmDeactivate() {
+  async function confirmDeactivate() {
     if (!deactivateModal) return;
-    setCourts(courts.map((c) => (c.id === deactivateModal.courtId ? { ...c, isActive: false } : c)));
+    await api.put(`/v1/courts/${deactivateModal.courtId}`, { isActive: false, reason: deactivateReason });
+    td.refetch();
     setDeactivateModal(null);
     setDeactivateReason("");
   }
@@ -159,22 +133,17 @@ export default function CourtsPage() {
   const hasConflicts = blockConflicts.length > 0;
   const [forceBlock, setForceBlock] = useState(false);
 
-  function addBlock() {
+  async function addBlock() {
     if (!blockForm.courtId || !blockForm.date) return;
     if (hasConflicts && !forceBlock) return;
 
-    const newBlock: CourtBlock = {
-      id: `cb${Date.now()}`,
-      tenantId: td.tenantId ?? "t1",
-      scope: "court",
-      sedeId: selectedSede ?? null,
-      courtId: blockForm.courtId,
+    await api.post(`/v1/courts/${blockForm.courtId}/blocks`, {
       date: blockForm.date,
       startTime: blockForm.startTime || null,
       endTime: blockForm.endTime || null,
       reason: blockForm.reason,
-    };
-    setBlocks([...blocks, newBlock]);
+    });
+    td.refetch();
     setBlockModal(false);
     setForceBlock(false);
     setBlockForm({ courtId: "", date: "", startTime: "", endTime: "", reason: "" });
@@ -185,8 +154,11 @@ export default function CourtsPage() {
     setBlockModal(true);
   }
 
-  function removeBlock(id: string) {
-    setBlocks(blocks.filter((b) => b.id !== id));
+  async function removeBlock(id: string) {
+    const block = blocks.find((b) => b.id === id);
+    if (!block) return;
+    await api.delete(`/v1/courts/${block.courtId}/blocks/${id}`);
+    td.refetch();
   }
 
   return (
@@ -276,14 +248,11 @@ export default function CourtsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {(() => {
-                    const sch = getActiveScheduleForCourt(court.id);
-                    return sch ? (
-                      <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
-                        {sch.name}
-                      </span>
-                    ) : null;
-                  })()}
+                  {td.courtSchedules.some((s) => s.courtId === court.id) && (
+                    <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                      Horario
+                    </span>
+                  )}
                   {courtBlockCount > 0 && (
                     <span className="text-[10px] font-medium bg-red-50 text-red-500 px-2 py-0.5 rounded-full">
                       {courtBlockCount} bloqueo{courtBlockCount > 1 ? "s" : ""}
